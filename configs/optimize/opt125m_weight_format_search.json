@@ -1,0 +1,14 @@
+{
+  "model": "/Users/phoenix/Works/models/opt-125m",
+  "model_type": "opt",
+  "method": "weight_format_search",
+  "calibration_dir": "outputs/calib/opt125m_wikitext2",
+  "candidates": ["mxfp4", "nvfp4"],
+  "activation_format": "none",
+  "include_lm_head": false,
+  "device": "mps",
+  "dtype": "auto",
+  "output_plan_path": "outputs/plans/opt125m_layerwise_optimized.json",
+  "save_quantized_checkpoint": null
+}
+

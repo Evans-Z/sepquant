@@ -1,0 +1,14 @@
+{
+  "model": "/Users/phoenix/Works/models/Qwen3-0.6B",
+  "model_type": "qwen3",
+  "method": "weight_format_search",
+  "calibration_dir": "outputs/calib/qwen3_wikitext2",
+  "candidates": ["mxfp4", "nvfp4"],
+  "activation_format": "none",
+  "include_lm_head": false,
+  "device": "mps",
+  "dtype": "auto",
+  "output_plan_path": "outputs/plans/qwen3_layerwise_optimized.json",
+  "save_quantized_checkpoint": null
+}
+

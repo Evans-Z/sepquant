@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sepquant"
+version = "0.1.0"
+description = "Research framework for DAFQ floating-point LLM quantization."
+readme = "DAFQ.md"
+requires-python = ">=3.10"
+dependencies = [
+    "accelerate",
+    "datasets",
+    "torch",
+    "tqdm",
+    "transformers",
+]
+
+[project.scripts]
+sepquant-collect-calib = "sepquant.calibration.collect:main"
+sepquant-eval-ppl = "sepquant.evaluation.ppl:main"
+sepquant-eval-tasks = "sepquant.evaluation.tasks:main"
+sepquant-format-benchmark = "sepquant.formats.benchmark:main"
+sepquant-optimize-layers = "sepquant.optimization.cli:main"
+sepquant-report-experiments = "sepquant.experiments.report:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+eval = [
+    "lm-eval",
+]
+
+[tool.setuptools.packages.find]
+include = ["sepquant*"]
+

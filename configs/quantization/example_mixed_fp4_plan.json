@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "default": {
+    "weight_format": "mxfp4",
+    "activation_format": "none"
+  },
+  "layers": {
+    "model.decoder.layers.0.fc2": {
+      "weight_format": "nvfp4",
+      "activation_format": "none",
+      "note": "Example exact-layer override"
+    }
+  },
+  "patterns": [
+    {
+      "pattern": "*.fc1",
+      "weight_format": "nvfp4",
+      "activation_format": "none",
+      "note": "Example wildcard override for OPT MLP up projections"
+    }
+  ]
+}
+

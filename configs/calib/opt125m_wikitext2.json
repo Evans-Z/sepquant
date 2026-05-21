@@ -1,0 +1,19 @@
+{
+  "model": "/Users/phoenix/Works/models/opt-125m",
+  "model_type": "opt",
+  "include_lm_head": false,
+  "dataset": "wikitext",
+  "dataset_config": "wikitext-2-raw-v1",
+  "split": "train",
+  "text_column": "text",
+  "nsamples": 128,
+  "seed": 0,
+  "sequence_length": 2048,
+  "max_tokens_per_layer": 2048,
+  "capture_mode": "gram",
+  "input_layer_patterns": null,
+  "device": "mps",
+  "dtype": "auto",
+  "output_dir": "outputs/calib/opt125m_wikitext2"
+}
+

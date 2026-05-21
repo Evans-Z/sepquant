@@ -1,0 +1,15 @@
+{
+  "model": "/Users/phoenix/Works/models/Qwen3-0.6B",
+  "model_type": "qwen3",
+  "method": "gptq",
+  "calibration_dir": "outputs/calib/qwen3_wikitext2",
+  "weight_format": "mxfp4",
+  "activation_format": "none",
+  "gptq_damp_percent": 0.01,
+  "include_lm_head": false,
+  "device": "mps",
+  "dtype": "auto",
+  "output_plan_path": "outputs/plans/qwen3_gptq_mxfp4.json",
+  "save_quantized_checkpoint": "outputs/quant/qwen3_gptq_mxfp4"
+}
+

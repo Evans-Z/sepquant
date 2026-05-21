@@ -1,0 +1,20 @@
+{
+  "model": "/Users/phoenix/Works/models/opt-125m",
+  "model_type": "opt",
+  "tasks": ["arc_challenge"],
+  "num_fewshot": 0,
+  "limit": null,
+  "batch_size": "4",
+  "max_length": null,
+  "weight_format": "mxfp4",
+  "activation_format": "none",
+  "quantization_plan": null,
+  "pre_quant_model": "outputs/quant/opt125m_gptq_mxfp4",
+  "include_lm_head": false,
+  "device": "mps",
+  "dtype": "auto",
+  "output_path": "outputs/eval/tasks_opt125m_gptq_mxfp4.json",
+  "log_samples": false,
+  "experiment_dir": "outputs/experiments"
+}
+

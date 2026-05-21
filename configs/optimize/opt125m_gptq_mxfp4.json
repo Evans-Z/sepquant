@@ -1,0 +1,15 @@
+{
+  "model": "/Users/phoenix/Works/models/opt-125m",
+  "model_type": "opt",
+  "method": "gptq",
+  "calibration_dir": "outputs/calib/opt125m_wikitext2",
+  "weight_format": "mxfp4",
+  "activation_format": "none",
+  "gptq_damp_percent": 0.01,
+  "include_lm_head": false,
+  "device": "mps",
+  "dtype": "auto",
+  "output_plan_path": "outputs/plans/opt125m_gptq_mxfp4.json",
+  "save_quantized_checkpoint": "outputs/quant/opt125m_gptq_mxfp4"
+}
+
