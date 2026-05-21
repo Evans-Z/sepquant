@@ -20,6 +20,7 @@ class FormatSearchResult:
 class WeightFormatSearchOptimizer:
     candidates: list[str]
     activation_format: str = "none"
+    rotation: str = "none"
     name: str = "weight_format_search"
 
     def optimize(self, context: LayerOptimizationContext) -> LayerOptimizationResult:
@@ -49,6 +50,7 @@ class WeightFormatSearchOptimizer:
             spec=LayerQuantizationSpec(
                 weight_format=result.best_format,
                 activation_format=self.activation_format,
+                rotation=self.rotation,
                 enabled=True,
             ),
             metrics={"errors": result.errors},

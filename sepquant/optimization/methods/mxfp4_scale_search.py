@@ -7,6 +7,7 @@ import torch
 from torch.nn import functional as F
 
 from sepquant.formats.fp_ops import quantize_e2m1, raw_e2m1_block_scale
+from sepquant.models.hadamard import block_hadamard_last_dim, rotate_gram_block_hadamard
 from sepquant.models.load import resolve_device
 from sepquant.optimization.layerwise import LayerOptimizationContext, LayerOptimizationResult
 from sepquant.quantization import LayerQuantizationSpec
@@ -17,6 +18,7 @@ class MXFP4HessianScaleSearchOptimizer:
     activation_format: str = "none"
     exponent_offsets: list[int] = field(default_factory=lambda: [-2, -1, 0, 1, 2])
     objective: str = "block"
+    rotation: str = "none"
     device: str = "auto"
     name: str = "mxfp4_hessian_scale_search"
 
@@ -30,9 +32,11 @@ class MXFP4HessianScaleSearchOptimizer:
 
         compute_device = resolve_device(self.device)
         original_weight = context.module.weight.detach().to(device=compute_device, dtype=torch.float32)
+        original_weight = _rotate_weight(original_weight, rotation=self.rotation)
+        gram = _rotate_gram(context.gram, rotation=self.rotation).to(device=compute_device)
         optimized_weight, search_metrics = mxfp4_hessian_scale_search_weight(
             weight=original_weight,
-            gram=context.gram,
+            gram=gram,
             exponent_offsets=self.exponent_offsets,
             objective=self.objective,
             device=compute_device,
@@ -40,18 +44,20 @@ class MXFP4HessianScaleSearchOptimizer:
         rel_mse = _relative_reconstruction_error(
             original_weight=original_weight,
             quantized_weight=optimized_weight,
-            gram=context.gram,
+            gram=gram,
         )
         return LayerOptimizationResult(
             layer_name=context.layer_name,
             spec=LayerQuantizationSpec(
                 weight_format="mxfp4",
                 activation_format=self.activation_format,
+                rotation=self.rotation,
                 enabled=True,
             ),
             metrics={
                 "method": self.name,
                 "device": str(compute_device),
+                "rotation": self.rotation,
                 "relative_reconstruction_error": rel_mse,
                 **search_metrics,
             },
@@ -240,6 +246,22 @@ def _mxfp4_scale_exponent(raw_scale: torch.Tensor) -> torch.Tensor:
 
 def _clamp_e8m0_exponent(exponent: torch.Tensor) -> torch.Tensor:
     return torch.clamp(exponent, min=-127, max=127)
+
+
+def _rotate_weight(weight: torch.Tensor, *, rotation: str) -> torch.Tensor:
+    if rotation == "none":
+        return weight
+    if rotation == "block_hadamard":
+        return block_hadamard_last_dim(weight)
+    raise ValueError(f"Unsupported rotation: {rotation}")
+
+
+def _rotate_gram(gram: torch.Tensor, *, rotation: str) -> torch.Tensor:
+    if rotation == "none":
+        return gram
+    if rotation == "block_hadamard":
+        return rotate_gram_block_hadamard(gram)
+    raise ValueError(f"Unsupported rotation: {rotation}")
 
 
 def _block_scores(

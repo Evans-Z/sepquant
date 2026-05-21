@@ -75,6 +75,7 @@ def patch_causal_lm_linears(
     include_lm_head: bool = False,
     quantization_plan: QuantizationPlan | None = None,
     prequantized_weight: bool = False,
+    rotation: str = "none",
 ) -> PatchReport:
     """Replace supported causal LM linear projections with `QuantLinear`."""
 
@@ -94,10 +95,11 @@ def patch_causal_lm_linears(
             skipped.append(name)
             continue
 
-        layer_weight_format, layer_activation_format = _resolve_layer_formats(
+        layer_weight_format, layer_activation_format, layer_rotation = _resolve_layer_formats(
             layer_name=name,
             fallback_weight_format=weight_format,
             fallback_activation_format=activation_format,
+            fallback_rotation=rotation,
             quantization_plan=quantization_plan,
         )
         if layer_weight_format is None:
@@ -109,12 +111,14 @@ def patch_causal_lm_linears(
                 module,
                 weight_format=layer_weight_format,
                 activation_format=layer_activation_format,
+                rotation=layer_rotation,
             )
             if prequantized_weight
             else QuantLinear.from_float(
                 module,
                 weight_format=layer_weight_format,
                 activation_format=layer_activation_format,
+                rotation=layer_rotation,
             )
         )
         setattr(parent, child_name, quant_linear)
@@ -169,16 +173,17 @@ def _resolve_layer_formats(
     layer_name: str,
     fallback_weight_format: FP4Format | None,
     fallback_activation_format: FP4Format | None,
+    fallback_rotation: str,
     quantization_plan: QuantizationPlan | None,
-) -> tuple[FP4Format | None, FP4Format | None]:
+) -> tuple[FP4Format | None, FP4Format | None, str]:
     if quantization_plan is None:
-        return fallback_weight_format, fallback_activation_format
+        return fallback_weight_format, fallback_activation_format, fallback_rotation
 
     spec = quantization_plan.get(layer_name)
     if spec is None:
-        return fallback_weight_format, fallback_activation_format
+        return fallback_weight_format, fallback_activation_format, fallback_rotation
     if not spec.enabled:
-        return None, None
+        return None, None, fallback_rotation
 
     weight_format = _format_from_spec(
         spec=spec,
@@ -190,7 +195,8 @@ def _resolve_layer_formats(
         field_name="activation_format",
         fallback=fallback_activation_format,
     )
-    return weight_format, activation_format
+    rotation = spec.rotation if spec.rotation is not None else fallback_rotation
+    return weight_format, activation_format, rotation
 
 
 def _format_from_spec(

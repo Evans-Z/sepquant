@@ -7,6 +7,7 @@ from torch.nn import functional as F
 
 from sepquant.formats import get_fp4_format
 from sepquant.formats.fp_ops import quantize_e2m1
+from sepquant.models.hadamard import block_hadamard_last_dim, rotate_gram_block_hadamard
 from sepquant.optimization.layerwise import LayerOptimizationContext, LayerOptimizationResult
 from sepquant.quantization import LayerQuantizationSpec
 
@@ -16,6 +17,7 @@ class GPTQOptimizer:
     weight_format: str
     activation_format: str = "none"
     damp_percent: float = 0.01
+    rotation: str = "none"
     device: str = "auto"
     name: str = "gptq"
 
@@ -29,9 +31,11 @@ class GPTQOptimizer:
 
         compute_device = _resolve_compute_device(self.device)
         original_weight = context.module.weight.detach().to(device=compute_device, dtype=torch.float32)
+        original_weight = _rotate_weight(original_weight, rotation=self.rotation)
+        gram = _rotate_gram(context.gram, rotation=self.rotation).to(device=compute_device)
         optimized_weight = gptq_quantize_weight(
             weight=original_weight,
-            gram=context.gram,
+            gram=gram,
             weight_format=self.weight_format,
             damp_percent=self.damp_percent,
             device=compute_device,
@@ -39,19 +43,21 @@ class GPTQOptimizer:
         rel_mse = _relative_reconstruction_error(
             original_weight=original_weight,
             quantized_weight=optimized_weight,
-            gram=context.gram,
+            gram=gram,
         )
         return LayerOptimizationResult(
             layer_name=context.layer_name,
             spec=LayerQuantizationSpec(
                 weight_format=self.weight_format,
                 activation_format=self.activation_format,
+                rotation=self.rotation,
                 enabled=True,
             ),
             metrics={
                 "method": "gptq",
                 "damp_percent": self.damp_percent,
                 "device": str(compute_device),
+                "rotation": self.rotation,
                 "weight_scale_granularity": "block",
                 "relative_reconstruction_error": rel_mse,
             },
@@ -134,6 +140,22 @@ def _format_block_scales(weight: torch.Tensor, quantizer) -> torch.Tensor:
 def _padding(width: int, block_size: int) -> int:
     remainder = width % block_size
     return 0 if remainder == 0 else block_size - remainder
+
+
+def _rotate_weight(weight: torch.Tensor, *, rotation: str) -> torch.Tensor:
+    if rotation == "none":
+        return weight
+    if rotation == "block_hadamard":
+        return block_hadamard_last_dim(weight)
+    raise ValueError(f"Unsupported rotation: {rotation}")
+
+
+def _rotate_gram(gram: torch.Tensor, *, rotation: str) -> torch.Tensor:
+    if rotation == "none":
+        return gram
+    if rotation == "block_hadamard":
+        return rotate_gram_block_hadamard(gram)
+    raise ValueError(f"Unsupported rotation: {rotation}")
 
 
 def _relative_reconstruction_error(

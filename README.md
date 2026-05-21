@@ -561,6 +561,14 @@ scripts/run_optimize_layers.sh configs/optimize/opt125m_mxfp4_dynamic_scale_sear
 
 This searches MXFP4 block scales inside the GPTQ loop from the current compensated block before quantizing that block. The scale-search objective can be set with `mxfp4_scale_objective`: `identity`, `diag`, or `block`.
 
+Run the same method with block-Hadamard rotation and dynamic MXFP4 activation scale search:
+
+```bash
+scripts/run_optimize_layers.sh configs/optimize/qwen3_mxfp4_dynamic_scale_search_gptq_hadamard.json
+```
+
+With `rotation=block_hadamard`, weights and Gram matrices are rotated during optimization, and `QuantLinear` applies the same FWHT block rotation along the hidden dimension before activation quantization.
+
 ## Common Workflows
 
 Evaluate FP baseline:

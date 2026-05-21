@@ -76,6 +76,7 @@ def build_plan_from_results(
             result.layer_name: {
                 "weight_format": result.spec.weight_format,
                 "activation_format": result.spec.activation_format,
+                "rotation": result.spec.rotation,
                 "enabled": result.spec.enabled,
                 **result.metrics,
             }

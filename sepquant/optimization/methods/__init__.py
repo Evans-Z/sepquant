@@ -18,18 +18,21 @@ def build_layer_optimizer(
     gptq_damp_percent: float = 0.01,
     mxfp4_scale_offsets: list[int] | None = None,
     mxfp4_scale_objective: str = "block",
+    rotation: str = "none",
     device: str = "auto",
 ):
     if method == "weight_format_search":
         return WeightFormatSearchOptimizer(
             candidates=candidates,
             activation_format=activation_format,
+            rotation=rotation,
         )
     if method == "gptq":
         return GPTQOptimizer(
             weight_format=weight_format,
             activation_format=activation_format,
             damp_percent=gptq_damp_percent,
+            rotation=rotation,
             device=device,
         )
     if method == "mxfp4_hessian_scale_search":
@@ -39,6 +42,7 @@ def build_layer_optimizer(
             activation_format=activation_format,
             exponent_offsets=mxfp4_scale_offsets or [-2, -1, 0, 1, 2],
             objective=mxfp4_scale_objective,
+            rotation=rotation,
             device=device,
         )
     if method == "mxfp4_hessian_scale_search_gptq":
@@ -49,6 +53,7 @@ def build_layer_optimizer(
             damp_percent=gptq_damp_percent,
             exponent_offsets=mxfp4_scale_offsets or [-2, -1, 0, 1, 2],
             scale_objective=mxfp4_scale_objective,
+            rotation=rotation,
             device=device,
         )
     if method == "mxfp4_dynamic_scale_search_gptq":
@@ -59,6 +64,7 @@ def build_layer_optimizer(
             damp_percent=gptq_damp_percent,
             exponent_offsets=mxfp4_scale_offsets or [-2, -1, 0, 1, 2],
             scale_objective=mxfp4_scale_objective,
+            rotation=rotation,
             device=device,
         )
     raise ValueError(f"Unsupported optimization method: {method}")

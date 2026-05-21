@@ -6,6 +6,7 @@ from typing import Any
 import torch
 
 from sepquant.formats.fp_ops import quantize_e2m1
+from sepquant.models.hadamard import block_hadamard_last_dim, rotate_gram_block_hadamard
 from sepquant.models.load import resolve_device
 from sepquant.optimization.layerwise import LayerOptimizationContext, LayerOptimizationResult
 from sepquant.optimization.methods.mxfp4_scale_search import search_mxfp4_hessian_scales
@@ -18,6 +19,7 @@ class MXFP4ScaleSearchGPTQOptimizer:
     damp_percent: float = 0.01
     exponent_offsets: list[int] = field(default_factory=lambda: [-2, -1, 0, 1, 2])
     scale_objective: str = "block"
+    rotation: str = "none"
     device: str = "auto"
     name: str = "mxfp4_hessian_scale_search_gptq"
 
@@ -31,16 +33,18 @@ class MXFP4ScaleSearchGPTQOptimizer:
 
         compute_device = resolve_device(self.device)
         original_weight = context.module.weight.detach().to(device=compute_device, dtype=torch.float32)
+        original_weight = _rotate_weight(original_weight, rotation=self.rotation)
+        gram = _rotate_gram(context.gram, rotation=self.rotation).to(device=compute_device)
         scale_search = search_mxfp4_hessian_scales(
             weight=original_weight,
-            gram=context.gram,
+            gram=gram,
             exponent_offsets=self.exponent_offsets,
             objective=self.scale_objective,
             device=compute_device,
         )
         optimized_weight = gptq_quantize_weight_with_mxfp4_scales(
             weight=original_weight,
-            gram=context.gram,
+            gram=gram,
             selected_scales=scale_search.selected_scales,
             damp_percent=self.damp_percent,
             device=compute_device,
@@ -48,19 +52,21 @@ class MXFP4ScaleSearchGPTQOptimizer:
         rel_mse = _relative_reconstruction_error(
             original_weight=original_weight,
             quantized_weight=optimized_weight,
-            gram=context.gram,
+            gram=gram,
         )
         return LayerOptimizationResult(
             layer_name=context.layer_name,
             spec=LayerQuantizationSpec(
                 weight_format="mxfp4",
                 activation_format=self.activation_format,
+                rotation=self.rotation,
                 enabled=True,
             ),
             metrics={
                 "method": self.name,
                 "device": str(compute_device),
                 "damp_percent": self.damp_percent,
+                "rotation": self.rotation,
                 "relative_reconstruction_error": rel_mse,
                 **_prefix_metrics("scale_search", scale_search.metrics),
             },
@@ -74,6 +80,7 @@ class MXFP4DynamicScaleSearchGPTQOptimizer:
     damp_percent: float = 0.01
     exponent_offsets: list[int] = field(default_factory=lambda: [-2, -1, 0, 1, 2])
     scale_objective: str = "identity"
+    rotation: str = "none"
     device: str = "auto"
     name: str = "mxfp4_dynamic_scale_search_gptq"
 
@@ -87,9 +94,11 @@ class MXFP4DynamicScaleSearchGPTQOptimizer:
 
         compute_device = resolve_device(self.device)
         original_weight = context.module.weight.detach().to(device=compute_device, dtype=torch.float32)
+        original_weight = _rotate_weight(original_weight, rotation=self.rotation)
+        gram = _rotate_gram(context.gram, rotation=self.rotation).to(device=compute_device)
         optimized_weight, dynamic_metrics = gptq_quantize_weight_with_dynamic_mxfp4_scale_search(
             weight=original_weight,
-            gram=context.gram,
+            gram=gram,
             exponent_offsets=self.exponent_offsets,
             scale_objective=self.scale_objective,
             damp_percent=self.damp_percent,
@@ -98,19 +107,21 @@ class MXFP4DynamicScaleSearchGPTQOptimizer:
         rel_mse = _relative_reconstruction_error(
             original_weight=original_weight,
             quantized_weight=optimized_weight,
-            gram=context.gram,
+            gram=gram,
         )
         return LayerOptimizationResult(
             layer_name=context.layer_name,
             spec=LayerQuantizationSpec(
                 weight_format="mxfp4",
                 activation_format=self.activation_format,
+                rotation=self.rotation,
                 enabled=True,
             ),
             metrics={
                 "method": self.name,
                 "device": str(compute_device),
                 "damp_percent": self.damp_percent,
+                "rotation": self.rotation,
                 "relative_reconstruction_error": rel_mse,
                 **dynamic_metrics,
             },
@@ -277,6 +288,22 @@ def _right_solve_upper(values: torch.Tensor, upper_matrix: torch.Tensor) -> torc
         values.T,
         upper=False,
     ).T
+
+
+def _rotate_weight(weight: torch.Tensor, *, rotation: str) -> torch.Tensor:
+    if rotation == "none":
+        return weight
+    if rotation == "block_hadamard":
+        return block_hadamard_last_dim(weight)
+    raise ValueError(f"Unsupported rotation: {rotation}")
+
+
+def _rotate_gram(gram: torch.Tensor, *, rotation: str) -> torch.Tensor:
+    if rotation == "none":
+        return gram
+    if rotation == "block_hadamard":
+        return rotate_gram_block_hadamard(gram)
+    raise ValueError(f"Unsupported rotation: {rotation}")
 
 
 def _relative_reconstruction_error(

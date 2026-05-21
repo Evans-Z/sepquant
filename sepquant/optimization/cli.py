@@ -39,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gptq-damp-percent", type=float, default=0.01)
     parser.add_argument("--mxfp4-scale-offsets", nargs="+", type=int, default=[-2, -1, 0, 1, 2])
     parser.add_argument("--mxfp4-scale-objective", default="block", choices=["identity", "diag", "block"])
+    parser.add_argument("--rotation", default="none", choices=["none", "block_hadamard"])
     parser.add_argument("--include-lm-head", action="store_true")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16", "float32"])
@@ -96,6 +97,7 @@ def main() -> None:
         gptq_damp_percent=args.gptq_damp_percent,
         mxfp4_scale_offsets=args.mxfp4_scale_offsets,
         mxfp4_scale_objective=args.mxfp4_scale_objective,
+        rotation=args.rotation,
         device=args.device,
     )
     results = optimize_layers(
@@ -116,6 +118,7 @@ def main() -> None:
             "gptq_damp_percent": args.gptq_damp_percent,
             "mxfp4_scale_offsets": args.mxfp4_scale_offsets,
             "mxfp4_scale_objective": args.mxfp4_scale_objective,
+            "rotation": args.rotation,
             "device": args.device,
         },
     )
@@ -155,6 +158,7 @@ def _save_sepquant_checkpoint(
         model_type=model_type,
         include_lm_head=include_lm_head,
         quantization_plan=quantization_plan,
+        rotation=plan.get("metadata", {}).get("rotation", "none"),
     )
     optimized_weights = {
         result.layer_name: result.optimized_weight
@@ -177,6 +181,7 @@ def _save_sepquant_checkpoint(
             {
                 "format": "transformers_pretrained",
                 "model_type": model_type,
+                "rotation": plan.get("metadata", {}).get("rotation", "none"),
                 "patched_layers": patch_report.replaced,
             },
             handle,

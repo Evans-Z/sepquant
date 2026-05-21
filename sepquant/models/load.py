@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,10 +30,12 @@ def load_quantized_causal_lm(
     include_lm_head: bool,
     quantization_plan: str | None = None,
     pre_quant_model: str | None = None,
+    rotation: str = "none",
 ) -> LoadedCausalLM:
     torch_dtype = parse_dtype(dtype)
     device_map = device if device == "auto" else None
     model_source = pre_quant_model or model_name_or_path
+    rotation = _resolve_rotation(rotation=rotation, pre_quant_model=pre_quant_model)
     tokenizer_source = _resolve_tokenizer_source(
         model_name_or_path=model_name_or_path,
         pre_quant_model=pre_quant_model,
@@ -53,17 +56,21 @@ def load_quantized_causal_lm(
 
     patch_report = None
     if pre_quant_model is not None:
-        if activation_format != "none":
+        if activation_format != "none" or rotation != "none":
             if weight_format == "none":
-                raise ValueError("weight_format must describe pre_quant_model weights when activation_format is enabled")
+                raise ValueError(
+                    "weight_format must describe pre_quant_model weights when activation quantization "
+                    "or rotation is enabled"
+                )
             patch_report = patch_causal_lm_linears(
                 model,
                 weight_format=get_fp4_format(weight_format),
-                activation_format=get_fp4_format(activation_format),
+                activation_format=None if activation_format == "none" else get_fp4_format(activation_format),
                 model_type=model_type,
                 include_lm_head=include_lm_head,
                 quantization_plan=None,
                 prequantized_weight=True,
+                rotation=rotation,
             )
         return LoadedCausalLM(model=model, tokenizer=tokenizer, patch_report=patch_report)
 
@@ -75,6 +82,7 @@ def load_quantized_causal_lm(
             model_type=model_type,
             include_lm_head=include_lm_head,
             quantization_plan=plan,
+            rotation=rotation,
         )
 
     return LoadedCausalLM(model=model, tokenizer=tokenizer, patch_report=patch_report)
@@ -99,6 +107,20 @@ def _resolve_tokenizer_source(*, model_name_or_path: str, pre_quant_model: str |
     if any((checkpoint / filename).exists() for filename in tokenizer_files):
         return pre_quant_model
     return model_name_or_path
+
+
+def _resolve_rotation(*, rotation: str, pre_quant_model: str | None) -> str:
+    if rotation != "none" or pre_quant_model is None:
+        return rotation
+    metadata_path = Path(pre_quant_model) / "metadata.json"
+    if not metadata_path.exists():
+        return rotation
+    with metadata_path.open("r", encoding="utf-8") as handle:
+        metadata = json.load(handle)
+    if not isinstance(metadata, dict):
+        return rotation
+    metadata_rotation = metadata.get("rotation")
+    return metadata_rotation if isinstance(metadata_rotation, str) else rotation
 
 
 def parse_dtype(dtype: str) -> torch.dtype | str:

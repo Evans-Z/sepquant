@@ -39,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--activation-format", default="none", choices=["none", "mxfp4", "mxfp4_search", "nvfp4"])
     parser.add_argument("--quantization-plan", default=None)
     parser.add_argument("--pre-quant-model", "--pre-quantized-model", dest="pre_quant_model", default=None)
+    parser.add_argument("--rotation", default="none", choices=["none", "block_hadamard"])
     parser.add_argument("--include-lm-head", action="store_true")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16", "float32"])
@@ -69,6 +70,7 @@ def main() -> None:
         include_lm_head=args.include_lm_head,
         quantization_plan=args.quantization_plan,
         pre_quant_model=args.pre_quant_model,
+        rotation=args.rotation,
     )
     if args.pre_quant_model is not None:
         print(f"Loaded pre-quantized model from {args.pre_quant_model}; skipped weight quantization.")

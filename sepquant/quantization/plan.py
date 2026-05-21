@@ -17,6 +17,7 @@ class LayerQuantizationSpec:
 
     weight_format: str | None = None
     activation_format: str | None = None
+    rotation: str | None = None
     enabled: bool = True
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -25,11 +26,12 @@ class LayerQuantizationSpec:
         metadata = {
             key: value
             for key, value in data.items()
-            if key not in {"weight_format", "activation_format", "enabled"}
+            if key not in {"weight_format", "activation_format", "rotation", "enabled"}
         }
         return cls(
             weight_format=data.get("weight_format"),
             activation_format=data.get("activation_format"),
+            rotation=data.get("rotation"),
             enabled=data.get("enabled", True),
             metadata=metadata,
         )
