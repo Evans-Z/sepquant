@@ -93,3 +93,18 @@ def test_quant_linear_forward_shape() -> None:
 
     assert output.shape == (2, 3, 4)
 
+
+def test_prequantized_quant_linear_preserves_weight() -> None:
+    linear = nn.Linear(8, 4)
+    original_weight = linear.weight.detach().clone()
+
+    quant_linear = QuantLinear.from_prequantized(
+        linear,
+        weight_format=get_fp4_format("mxfp4"),
+        activation_format=get_fp4_format("mxfp4_search"),
+    )
+
+    assert torch.equal(quant_linear.weight, original_weight)
+    assert quant_linear.activation_format is not None
+    assert quant_linear.activation_format.name == "mxfp4_search"
+

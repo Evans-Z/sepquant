@@ -57,6 +57,29 @@ class QuantLinear(nn.Module):
             quant_linear.bias.copy_(module.bias.detach())
         return quant_linear
 
+    @classmethod
+    @torch.no_grad()
+    def from_prequantized(
+        cls,
+        module: nn.Linear,
+        *,
+        weight_format: FP4Format,
+        activation_format: FP4Format | None = None,
+    ) -> "QuantLinear":
+        quant_linear = cls(
+            module.in_features,
+            module.out_features,
+            bias=module.bias is not None,
+            weight_format=weight_format,
+            activation_format=activation_format,
+            device=module.weight.device,
+            dtype=module.weight.dtype,
+        )
+        quant_linear.weight.copy_(module.weight.detach())
+        if module.bias is not None:
+            quant_linear.bias.copy_(module.bias.detach())
+        return quant_linear
+
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         if self.activation_format is not None:
             inputs = self.activation_format.quantize(inputs)

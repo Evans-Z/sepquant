@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--split", default="test")
     parser.add_argument("--text-column", default="text")
     parser.add_argument("--weight-format", default="mxfp4", choices=["none", "mxfp4", "nvfp4"])
-    parser.add_argument("--activation-format", default="none", choices=["none", "mxfp4", "nvfp4"])
+    parser.add_argument("--activation-format", default="none", choices=["none", "mxfp4", "mxfp4_search", "nvfp4"])
     parser.add_argument("--quantization-plan", default=None)
     parser.add_argument("--pre-quant-model", "--pre-quantized-model", dest="pre_quant_model", default=None)
     parser.add_argument("--include-lm-head", action="store_true")

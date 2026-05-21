@@ -1,6 +1,6 @@
 import torch
 
-from sepquant.formats import MXFP4Format, NVFP4Format, get_fp4_format
+from sepquant.formats import MXFP4Format, MXFP4ScaleSearchFormat, NVFP4Format, get_fp4_format
 
 
 def test_mxfp4_quantize_preserves_shape() -> None:
@@ -28,4 +28,15 @@ def test_nvfp4_uses_two_level_scale_mode() -> None:
 
     assert isinstance(fmt, NVFP4Format)
     assert fmt.block_size == 16
+
+
+def test_mxfp4_search_quantizes_hidden_dimension_blocks() -> None:
+    fmt = get_fp4_format("mxfp4_search")
+    tensor = torch.randn(2, 3, 65)
+
+    quantized = fmt.quantize(tensor)
+
+    assert quantized.shape == tensor.shape
+    assert torch.isfinite(quantized).all()
+    assert isinstance(fmt, MXFP4ScaleSearchFormat)
 

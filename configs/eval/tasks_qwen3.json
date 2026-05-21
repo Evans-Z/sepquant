@@ -7,13 +7,13 @@
   "batch_size": "4",
   "max_length": null,
   "weight_format": "mxfp4",
-  "activation_format": "none",
+  "activation_format": "mxfp4",
   "quantization_plan": null,
-  "pre_quant_model": null,
+  "pre_quant_model": "outputs/quant/qwen3_mxfp4_dynamic_scale_search_gptq",
   "include_lm_head": false,
   "device": "mps",
   "dtype": "auto",
-  "output_path": "outputs/eval/tasks_qwen3_mxfp4.json",
+  "output_path": "outputs/eval/tasks_qwen3_mxfp4_dynamic_scale_search_gptq.json",
   "log_samples": false,
   "experiment_dir": "outputs/experiments"
 }

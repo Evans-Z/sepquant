@@ -220,7 +220,7 @@ def search_mxfp4_hessian_scales(
 
 def _mxfp4_block_scale(blocks: torch.Tensor, *, eps: float) -> torch.Tensor:
     raw_scale = raw_e2m1_block_scale(blocks, eps)
-    return torch.pow(2.0, torch.ceil(torch.log2(raw_scale)))
+    return torch.pow(2.0, _mxfp4_scale_exponent(raw_scale))
 
 
 def _quantize_with_offset(
@@ -229,8 +229,17 @@ def _quantize_with_offset(
     base_scale: torch.Tensor,
     exponent_offset: int,
 ) -> torch.Tensor:
-    scale = base_scale * (2.0**exponent_offset)
+    base_exponent = torch.log2(base_scale)
+    scale = torch.pow(2.0, _clamp_e8m0_exponent(base_exponent + exponent_offset))
     return quantize_e2m1(weight_block / scale) * scale
+
+
+def _mxfp4_scale_exponent(raw_scale: torch.Tensor) -> torch.Tensor:
+    return _clamp_e8m0_exponent(torch.ceil(torch.log2(raw_scale)))
+
+
+def _clamp_e8m0_exponent(exponent: torch.Tensor) -> torch.Tensor:
+    return torch.clamp(exponent, min=-127, max=127)
 
 
 def _block_scores(

@@ -74,6 +74,7 @@ def patch_causal_lm_linears(
     model_type: ModelType = "auto",
     include_lm_head: bool = False,
     quantization_plan: QuantizationPlan | None = None,
+    prequantized_weight: bool = False,
 ) -> PatchReport:
     """Replace supported causal LM linear projections with `QuantLinear`."""
 
@@ -103,15 +104,20 @@ def patch_causal_lm_linears(
             skipped.append(name)
             continue
 
-        setattr(
-            parent,
-            child_name,
-            QuantLinear.from_float(
+        quant_linear = (
+            QuantLinear.from_prequantized(
                 module,
                 weight_format=layer_weight_format,
                 activation_format=layer_activation_format,
-            ),
+            )
+            if prequantized_weight
+            else QuantLinear.from_float(
+                module,
+                weight_format=layer_weight_format,
+                activation_format=layer_activation_format,
+            )
         )
+        setattr(parent, child_name, quant_linear)
 
     return PatchReport(
         replaced=len(targets) - len(skipped),

@@ -49,17 +49,24 @@ def load_quantized_causal_lm(
         model.to(resolve_device(device))
     model.eval()
 
-    if pre_quant_model is not None:
-        if activation_format != "none":
-            raise ValueError(
-                "activation_format is not supported with pre_quant_model yet because "
-                "activation quantization requires wrapping Linear layers without re-quantizing weights."
-            )
-        return LoadedCausalLM(model=model, tokenizer=tokenizer, patch_report=None)
-
     plan = QuantizationPlan.from_file(quantization_plan) if quantization_plan else None
 
     patch_report = None
+    if pre_quant_model is not None:
+        if activation_format != "none":
+            if weight_format == "none":
+                raise ValueError("weight_format must describe pre_quant_model weights when activation_format is enabled")
+            patch_report = patch_causal_lm_linears(
+                model,
+                weight_format=get_fp4_format(weight_format),
+                activation_format=get_fp4_format(activation_format),
+                model_type=model_type,
+                include_lm_head=include_lm_head,
+                quantization_plan=None,
+                prequantized_weight=True,
+            )
+        return LoadedCausalLM(model=model, tokenizer=tokenizer, patch_report=patch_report)
+
     if weight_format != "none" or plan is not None:
         patch_report = patch_causal_lm_linears(
             model,

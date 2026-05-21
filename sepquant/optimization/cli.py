@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--calibration-dir", type=Path, default=None)
     parser.add_argument("--candidates", nargs="+", default=["mxfp4", "nvfp4"])
     parser.add_argument("--weight-format", default="mxfp4", choices=["mxfp4", "nvfp4"])
-    parser.add_argument("--activation-format", default="none", choices=["none", "mxfp4", "nvfp4"])
+    parser.add_argument("--activation-format", default="none", choices=["none", "mxfp4", "mxfp4_search", "nvfp4"])
     parser.add_argument("--gptq-damp-percent", type=float, default=0.01)
     parser.add_argument("--mxfp4-scale-offsets", nargs="+", type=int, default=[-2, -1, 0, 1, 2])
     parser.add_argument("--mxfp4-scale-objective", default="block", choices=["identity", "diag", "block"])

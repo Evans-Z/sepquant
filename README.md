@@ -626,7 +626,7 @@ sepquant-report-experiments outputs/experiments \
 
 - Current quantization is fake quantization for research validation, not packed-kernel inference.
 - `include_lm_head` defaults to `false` because most quantization baselines leave the LM head unquantized.
-- `activation_format` can be set to `none`, `mxfp4`, or `nvfp4`.
+- `activation_format` can be set to `none`, `mxfp4`, `mxfp4_search`, or `nvfp4`.
 - Downstream task results are saved to `output_path` when provided.
 - Use small `limit` values for task smoke tests before running full evaluations.
 
