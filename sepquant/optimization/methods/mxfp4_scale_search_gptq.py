@@ -4,7 +4,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import torch
+from torch.nn import functional as F
 
+from sepquant.formats import get_fp4_format
 from sepquant.formats.fp_ops import quantize_e2m1
 from sepquant.models.hadamard import block_hadamard_last_dim, rotate_gram_block_hadamard
 from sepquant.models.load import resolve_device
@@ -127,6 +129,104 @@ class MXFP4DynamicScaleSearchGPTQOptimizer:
             },
             optimized_weight=optimized_weight.cpu(),
         )
+
+
+@dataclass(frozen=True)
+class MXFP4RotationSelectGPTQOptimizer:
+    activation_format: str = "none"
+    damp_percent: float = 0.01
+    exponent_offsets: list[int] = field(default_factory=lambda: [-2, -1, 0, 1, 2])
+    scale_objective: str = "identity"
+    candidate_rotation: str = "block_hadamard"
+    dynamic_scale_search: bool = True
+    selection_margin: float = 0.0
+    device: str = "auto"
+    name: str = "mxfp4_dynamic_scale_search_gptq_rotation_select"
+
+    def optimize(self, context: LayerOptimizationContext) -> LayerOptimizationResult:
+        inputs = context.inputs
+        gram = context.gram
+        if inputs is None:
+            return LayerOptimizationResult(
+                layer_name=context.layer_name,
+                spec=LayerQuantizationSpec(enabled=False),
+                metrics={"reason": "missing_inputs"},
+            )
+        if gram is None:
+            gram = inputs.float().t().matmul(inputs.float())
+
+        compute_device = resolve_device(self.device)
+        original_weight = context.module.weight.detach().to(device=compute_device, dtype=torch.float32)
+        bias = (
+            context.module.bias.detach().to(device=compute_device, dtype=torch.float32)
+            if context.module.bias is not None
+            else None
+        )
+        candidate_inputs = inputs.detach().to(device=compute_device, dtype=torch.float32)
+        gram = gram.to(device=compute_device, dtype=torch.float32)
+
+        no_rotation = _run_mxfp4_gptq_candidate(
+            weight=original_weight,
+            bias=bias,
+            inputs=candidate_inputs,
+            gram=gram,
+            activation_format=self.activation_format,
+            rotation="none",
+            exponent_offsets=self.exponent_offsets,
+            scale_objective=self.scale_objective,
+            damp_percent=self.damp_percent,
+            dynamic_scale_search=self.dynamic_scale_search,
+            device=compute_device,
+        )
+        rotated = _run_mxfp4_gptq_candidate(
+            weight=original_weight,
+            bias=bias,
+            inputs=candidate_inputs,
+            gram=gram,
+            activation_format=self.activation_format,
+            rotation=self.candidate_rotation,
+            exponent_offsets=self.exponent_offsets,
+            scale_objective=self.scale_objective,
+            damp_percent=self.damp_percent,
+            dynamic_scale_search=self.dynamic_scale_search,
+            device=compute_device,
+        )
+
+        threshold = no_rotation.output_relative_error * (1.0 - self.selection_margin)
+        selected = rotated if rotated.output_relative_error < threshold else no_rotation
+        return LayerOptimizationResult(
+            layer_name=context.layer_name,
+            spec=LayerQuantizationSpec(
+                weight_format="mxfp4",
+                activation_format=self.activation_format,
+                rotation=selected.rotation,
+                enabled=True,
+            ),
+            metrics={
+                "method": self.name,
+                "device": str(compute_device),
+                "damp_percent": self.damp_percent,
+                "rotation": selected.rotation,
+                "candidate_rotation": self.candidate_rotation,
+                "selection_margin": self.selection_margin,
+                "selection_metric": "output_relative_error",
+                "no_rotation_output_relative_error": no_rotation.output_relative_error,
+                "rotated_output_relative_error": rotated.output_relative_error,
+                "no_rotation_weight_relative_reconstruction_error": no_rotation.weight_relative_error,
+                "rotated_weight_relative_reconstruction_error": rotated.weight_relative_error,
+                **_prefix_metrics(f"selected_{selected.rotation}", selected.metrics),
+            },
+            optimized_weight=selected.optimized_weight.cpu(),
+        )
+
+
+@dataclass(frozen=True)
+class _MXFP4GPTQCandidate:
+    rotation: str
+    optimized_weight: torch.Tensor
+    output_relative_error: float
+    weight_relative_error: float
+    metrics: dict[str, Any]
 
 
 def gptq_quantize_weight_with_mxfp4_scales(
@@ -271,6 +371,77 @@ def gptq_quantize_weight_with_dynamic_mxfp4_scale_search(
     }
 
 
+def _run_mxfp4_gptq_candidate(
+    *,
+    weight: torch.Tensor,
+    bias: torch.Tensor | None,
+    inputs: torch.Tensor,
+    gram: torch.Tensor,
+    activation_format: str,
+    rotation: str,
+    exponent_offsets: list[int],
+    scale_objective: str,
+    damp_percent: float,
+    dynamic_scale_search: bool,
+    device: torch.device | str,
+) -> _MXFP4GPTQCandidate:
+    compute_device = torch.device(device)
+    rotated_weight = _rotate_weight(weight, rotation=rotation)
+    rotated_gram = _rotate_gram(gram, rotation=rotation).to(device=compute_device)
+    rotated_inputs = _rotate_weight(inputs, rotation=rotation)
+
+    if dynamic_scale_search:
+        optimized_weight, candidate_metrics = gptq_quantize_weight_with_dynamic_mxfp4_scale_search(
+            weight=rotated_weight,
+            gram=rotated_gram,
+            exponent_offsets=exponent_offsets,
+            scale_objective=scale_objective,
+            damp_percent=damp_percent,
+            device=compute_device,
+        )
+    else:
+        scale_search = search_mxfp4_hessian_scales(
+            weight=rotated_weight,
+            gram=rotated_gram,
+            exponent_offsets=exponent_offsets,
+            objective=scale_objective,
+            device=compute_device,
+        )
+        optimized_weight = gptq_quantize_weight_with_mxfp4_scales(
+            weight=rotated_weight,
+            gram=rotated_gram,
+            selected_scales=scale_search.selected_scales,
+            damp_percent=damp_percent,
+            device=compute_device,
+        )
+        candidate_metrics = _prefix_metrics("scale_search", scale_search.metrics)
+
+    weight_relative_error = _relative_reconstruction_error(
+        original_weight=rotated_weight,
+        quantized_weight=optimized_weight,
+        gram=rotated_gram,
+    )
+    output_relative_error = _relative_output_error(
+        original_weight=weight,
+        quantized_weight=optimized_weight,
+        bias=bias,
+        inputs=inputs,
+        rotated_inputs=rotated_inputs,
+        activation_format=activation_format,
+    )
+    return _MXFP4GPTQCandidate(
+        rotation=rotation,
+        optimized_weight=optimized_weight,
+        output_relative_error=output_relative_error,
+        weight_relative_error=weight_relative_error,
+        metrics={
+            "rotation": rotation,
+            "relative_reconstruction_error": weight_relative_error,
+            **candidate_metrics,
+        },
+    )
+
+
 def _prefix_metrics(prefix: str, metrics: dict[str, Any]) -> dict[str, Any]:
     return {f"{prefix}_{key}": value for key, value in metrics.items()}
 
@@ -315,6 +486,29 @@ def _relative_reconstruction_error(
     denominator = _quadratic_weight_error(original_weight, gram).clamp_min(1e-12)
     numerator = _quadratic_weight_error(original_weight - quantized_weight, gram)
     return (numerator / denominator).item()
+
+
+def _relative_output_error(
+    *,
+    original_weight: torch.Tensor,
+    quantized_weight: torch.Tensor,
+    bias: torch.Tensor | None,
+    inputs: torch.Tensor,
+    rotated_inputs: torch.Tensor,
+    activation_format: str,
+) -> float:
+    reference = F.linear(inputs, original_weight, bias)
+    quantized_inputs = _quantize_activation(rotated_inputs, activation_format=activation_format)
+    candidate = F.linear(quantized_inputs, quantized_weight, bias)
+    denominator = torch.sum(reference.float().square()).clamp_min(1e-12)
+    numerator = torch.sum((reference - candidate).float().square())
+    return (numerator / denominator).item()
+
+
+def _quantize_activation(inputs: torch.Tensor, *, activation_format: str) -> torch.Tensor:
+    if activation_format == "none":
+        return inputs
+    return get_fp4_format(activation_format).quantize(inputs)
 
 
 def _quadratic_weight_error(weight_error: torch.Tensor, gram: torch.Tensor) -> torch.Tensor:

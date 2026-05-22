@@ -24,6 +24,13 @@ class TinyOptBlock(nn.Module):
         self.down_proj = nn.Linear(8, 8)
 
 
+class TinyRotationOptBlock(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.q_proj = nn.Linear(32, 16)
+        self.out_proj = nn.Linear(32, 16)
+
+
 def test_patch_qwen_linears_uses_generic_suffix_filter() -> None:
     model = TinyQwenBlock()
 
@@ -122,4 +129,38 @@ def test_block_hadamard_rotation_preserves_forward_shape() -> None:
 
     assert output.shape == (2, 3, 4)
     assert quant_linear.rotation == "block_hadamard"
+
+
+def test_quantization_plan_controls_layer_rotation() -> None:
+    model = TinyRotationOptBlock()
+    plan = QuantizationPlan.from_dict(
+        {
+            "layers": {
+                "q_proj": {
+                    "weight_format": "mxfp4",
+                    "activation_format": "mxfp4_search",
+                    "rotation": "block_hadamard",
+                },
+                "out_proj": {
+                    "weight_format": "mxfp4",
+                    "activation_format": "mxfp4_search",
+                    "rotation": "none",
+                },
+            }
+        }
+    )
+
+    report = patch_causal_lm_linears(
+        model,
+        weight_format=None,
+        activation_format=None,
+        model_type="opt",
+        quantization_plan=plan,
+    )
+
+    assert report.replaced == 2
+    assert isinstance(model.q_proj, QuantLinear)
+    assert isinstance(model.out_proj, QuantLinear)
+    assert model.q_proj.rotation == "block_hadamard"
+    assert model.out_proj.rotation == "none"
 

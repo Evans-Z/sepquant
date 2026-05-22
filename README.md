@@ -569,6 +569,14 @@ scripts/run_optimize_layers.sh configs/optimize/qwen3_mxfp4_dynamic_scale_search
 
 With `rotation=block_hadamard`, weights and Gram matrices are rotated during optimization, and `QuantLinear` applies the same FWHT block rotation along the hidden dimension before activation quantization.
 
+Run the dynamic method with greedy per-layer Hadamard selection:
+
+```bash
+scripts/run_optimize_layers.sh configs/optimize/qwen3_mxfp4_dynamic_scale_search_gptq_rotation_select.json
+```
+
+This compares full GPTQ+MXFP4 candidates with and without block-Hadamard rotation on saved calibration inputs, then writes the selected per-layer rotation into the quantization plan. Collect calibration with `capture_mode=both` for this method so both `X^T X` and layer inputs are available.
+
 ## Common Workflows
 
 Evaluate FP baseline:

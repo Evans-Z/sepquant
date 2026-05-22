@@ -10,7 +10,7 @@
   "seed": 0,
   "sequence_length": 2048,
   "max_tokens_per_layer": 2048,
-  "capture_mode": "gram",
+  "capture_mode": "inputs",
   "input_layer_patterns": null,
   "device": "mps",
   "dtype": "auto",

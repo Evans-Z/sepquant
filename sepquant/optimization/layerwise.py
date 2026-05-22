@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -69,18 +70,41 @@ def build_plan_from_results(
     results: list[LayerOptimizationResult],
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
+    layers = {
+        result.layer_name: {
+            "weight_format": result.spec.weight_format,
+            "activation_format": result.spec.activation_format,
+            "rotation": result.spec.rotation,
+            "enabled": result.spec.enabled,
+            **result.metrics,
+        }
+        for result in results
+    }
     return {
         "version": 1,
         "metadata": metadata,
-        "layers": {
-            result.layer_name: {
-                "weight_format": result.spec.weight_format,
-                "activation_format": result.spec.activation_format,
-                "rotation": result.spec.rotation,
-                "enabled": result.spec.enabled,
-                **result.metrics,
-            }
-            for result in results
-        },
+        "summary": _build_plan_summary(results),
+        "layers": layers,
     }
+
+
+def _build_plan_summary(results: list[LayerOptimizationResult]) -> dict[str, Any]:
+    enabled_results = [result for result in results if result.spec.enabled]
+    return {
+        "total_layers": len(results),
+        "enabled_layers": len(enabled_results),
+        "disabled_layers": len(results) - len(enabled_results),
+        "rotation_counts": _count_spec_field(enabled_results, "rotation"),
+        "weight_format_counts": _count_spec_field(enabled_results, "weight_format"),
+        "activation_format_counts": _count_spec_field(enabled_results, "activation_format"),
+    }
+
+
+def _count_spec_field(results: list[LayerOptimizationResult], field_name: str) -> dict[str, int]:
+    counts = Counter(_format_summary_value(getattr(result.spec, field_name)) for result in results)
+    return dict(sorted(counts.items()))
+
+
+def _format_summary_value(value: Any) -> str:
+    return "none" if value is None else str(value)
 

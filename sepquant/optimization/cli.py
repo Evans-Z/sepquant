@@ -181,13 +181,28 @@ def _save_sepquant_checkpoint(
             {
                 "format": "transformers_pretrained",
                 "model_type": model_type,
-                "rotation": plan.get("metadata", {}).get("rotation", "none"),
+                "rotation": _checkpoint_rotation(plan),
                 "patched_layers": patch_report.replaced,
             },
             handle,
             indent=2,
         )
     print(f"Saved SepQuant checkpoint to {checkpoint_dir}")
+
+
+def _checkpoint_rotation(plan: dict[str, Any]) -> str:
+    layers = plan.get("layers", {})
+    if not isinstance(layers, dict) or not layers:
+        return plan.get("metadata", {}).get("rotation", "none")
+
+    rotations = {
+        spec.get("rotation", "none")
+        for spec in layers.values()
+        if isinstance(spec, dict) and spec.get("enabled", True)
+    }
+    if len(rotations) == 1:
+        return next(iter(rotations))
+    return "none"
 
 
 def _load_config(path: Path) -> dict[str, Any]:

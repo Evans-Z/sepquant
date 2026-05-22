@@ -52,23 +52,26 @@ def load_quantized_causal_lm(
         model.to(resolve_device(device))
     model.eval()
 
-    plan = QuantizationPlan.from_file(quantization_plan) if quantization_plan else None
+    plan = _resolve_quantization_plan(
+        quantization_plan=quantization_plan,
+        pre_quant_model=pre_quant_model,
+    )
 
     patch_report = None
     if pre_quant_model is not None:
-        if activation_format != "none" or rotation != "none":
-            if weight_format == "none":
+        if plan is not None or activation_format != "none" or rotation != "none":
+            if weight_format == "none" and plan is None:
                 raise ValueError(
                     "weight_format must describe pre_quant_model weights when activation quantization "
                     "or rotation is enabled"
                 )
             patch_report = patch_causal_lm_linears(
                 model,
-                weight_format=get_fp4_format(weight_format),
+                weight_format=None if weight_format == "none" else get_fp4_format(weight_format),
                 activation_format=None if activation_format == "none" else get_fp4_format(activation_format),
                 model_type=model_type,
                 include_lm_head=include_lm_head,
-                quantization_plan=None,
+                quantization_plan=plan,
                 prequantized_weight=True,
                 rotation=rotation,
             )
@@ -86,6 +89,22 @@ def load_quantized_causal_lm(
         )
 
     return LoadedCausalLM(model=model, tokenizer=tokenizer, patch_report=patch_report)
+
+
+def _resolve_quantization_plan(
+    *,
+    quantization_plan: str | None,
+    pre_quant_model: str | None,
+) -> QuantizationPlan | None:
+    if quantization_plan is not None:
+        return QuantizationPlan.from_file(quantization_plan)
+    if pre_quant_model is None:
+        return None
+
+    plan_path = Path(pre_quant_model) / "quantization_plan.json"
+    if not plan_path.exists():
+        return None
+    return QuantizationPlan.from_file(plan_path)
 
 
 def _resolve_tokenizer_source(*, model_name_or_path: str, pre_quant_model: str | None) -> str:

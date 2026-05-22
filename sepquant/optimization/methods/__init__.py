@@ -4,6 +4,7 @@ from sepquant.optimization.methods.gptq import GPTQOptimizer
 from sepquant.optimization.methods.mxfp4_scale_search import MXFP4HessianScaleSearchOptimizer
 from sepquant.optimization.methods.mxfp4_scale_search_gptq import (
     MXFP4DynamicScaleSearchGPTQOptimizer,
+    MXFP4RotationSelectGPTQOptimizer,
     MXFP4ScaleSearchGPTQOptimizer,
 )
 from sepquant.optimization.methods.weight_format_search import WeightFormatSearchOptimizer
@@ -67,6 +68,36 @@ def build_layer_optimizer(
             rotation=rotation,
             device=device,
         )
+    if method == "mxfp4_hessian_scale_search_gptq_rotation_select":
+        if weight_format != "mxfp4":
+            raise ValueError(
+                "mxfp4_hessian_scale_search_gptq_rotation_select only supports weight_format='mxfp4'"
+            )
+        return MXFP4RotationSelectGPTQOptimizer(
+            activation_format=activation_format,
+            damp_percent=gptq_damp_percent,
+            exponent_offsets=mxfp4_scale_offsets or [-2, -1, 0, 1, 2],
+            scale_objective=mxfp4_scale_objective,
+            candidate_rotation=rotation,
+            dynamic_scale_search=False,
+            name="mxfp4_hessian_scale_search_gptq_rotation_select",
+            device=device,
+        )
+    if method == "mxfp4_dynamic_scale_search_gptq_rotation_select":
+        if weight_format != "mxfp4":
+            raise ValueError(
+                "mxfp4_dynamic_scale_search_gptq_rotation_select only supports weight_format='mxfp4'"
+            )
+        return MXFP4RotationSelectGPTQOptimizer(
+            activation_format=activation_format,
+            damp_percent=gptq_damp_percent,
+            exponent_offsets=mxfp4_scale_offsets or [-2, -1, 0, 1, 2],
+            scale_objective=mxfp4_scale_objective,
+            candidate_rotation=rotation,
+            dynamic_scale_search=True,
+            name="mxfp4_dynamic_scale_search_gptq_rotation_select",
+            device=device,
+        )
     raise ValueError(f"Unsupported optimization method: {method}")
 
 
@@ -74,6 +105,7 @@ __all__ = [
     "GPTQOptimizer",
     "MXFP4DynamicScaleSearchGPTQOptimizer",
     "MXFP4HessianScaleSearchOptimizer",
+    "MXFP4RotationSelectGPTQOptimizer",
     "MXFP4ScaleSearchGPTQOptimizer",
     "WeightFormatSearchOptimizer",
     "build_layer_optimizer",
