@@ -577,6 +577,15 @@ scripts/run_optimize_layers.sh configs/optimize/qwen3_mxfp4_dynamic_scale_search
 
 This compares full GPTQ+MXFP4 candidates with and without block-Hadamard rotation on saved calibration inputs, then writes the selected per-layer rotation into the quantization plan. Collect calibration with `capture_mode=both` for this method so both `X^T X` and layer inputs are available.
 
+Evaluate a checkpoint that contains a mixed rotation plan:
+
+```bash
+sepquant-eval-ppl --config configs/eval/ppl_qwen3_rotation_select_wikitext2.json
+sepquant-eval-tasks --config configs/eval/tasks_qwen3_rotation_select.json
+```
+
+When `pre_quant_model` contains `quantization_plan.json`, eval automatically uses that plan. Global `rotation=block_hadamard` is still supported for blind rotation; per-layer plan entries override the global fallback when a plan is present.
+
 ## Common Workflows
 
 Evaluate FP baseline:

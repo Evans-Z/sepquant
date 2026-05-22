@@ -1,0 +1,20 @@
+{
+  "model": "/Users/phoenix/Works/models/Qwen3-0.6B",
+  "model_type": "qwen3",
+  "tasks": ["arc_challenge", "arc_easy"],
+  "num_fewshot": 0,
+  "limit": null,
+  "batch_size": "4",
+  "max_length": null,
+  "weight_format": "none",
+  "activation_format": "none",
+  "quantization_plan": null,
+  "pre_quant_model": "outputs/quant/qwen3_mxfp4_dynamic_scale_search_gptq_rotation_select",
+  "rotation": "none",
+  "include_lm_head": false,
+  "device": "mps",
+  "dtype": "auto",
+  "output_path": "outputs/eval/tasks_qwen3_mxfp4_dynamic_scale_search_gptq_rotation_select.json",
+  "log_samples": false,
+  "experiment_dir": "outputs/experiments"
+}

@@ -1,0 +1,19 @@
+{
+  "model": "/Users/phoenix/Works/models/Qwen3-0.6B",
+  "model_type": "qwen3",
+  "dataset": "wikitext",
+  "dataset_config": "wikitext-2-raw-v1",
+  "split": "test",
+  "text_column": "text",
+  "weight_format": "none",
+  "activation_format": "none",
+  "quantization_plan": null,
+  "pre_quant_model": "outputs/quant/qwen3_mxfp4_dynamic_scale_search_gptq_rotation_select",
+  "rotation": "none",
+  "include_lm_head": false,
+  "device": "mps",
+  "dtype": "auto",
+  "max_samples": null,
+  "sequence_length": 2048,
+  "experiment_dir": "outputs/experiments/"
+}
