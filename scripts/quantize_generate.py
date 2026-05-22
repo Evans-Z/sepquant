@@ -19,7 +19,11 @@ def parse_args() -> argparse.Namespace:
         choices=["auto", "qwen", "qwen2", "qwen3", "llama", "mistral", "gemma", "opt", "generic"],
     )
     parser.add_argument("--weight-format", default="mxfp4", choices=["none", "mxfp4", "nvfp4"])
-    parser.add_argument("--activation-format", default="none", choices=["none", "mxfp4", "mxfp4_search", "nvfp4"])
+    parser.add_argument(
+        "--activation-format",
+        default="none",
+        choices=["none", "mxfp4", "mxfp4_search", "nvfp4", "nvfp4_search"],
+    )
     parser.add_argument("--rotation", default="none", choices=["none", "block_hadamard"])
     parser.add_argument("--device", default="auto", help="Device map value, or a torch device like cuda:0/cpu/mps.")
     parser.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16", "float32"])

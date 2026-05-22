@@ -561,6 +561,14 @@ scripts/run_optimize_layers.sh configs/optimize/opt125m_mxfp4_dynamic_scale_sear
 
 This searches MXFP4 block scales inside the GPTQ loop from the current compensated block before quantizing that block. The scale-search objective can be set with `mxfp4_scale_objective`: `identity`, `diag`, or `block`.
 
+NVFP4 also supports GPTQ with E4M3 block-scale code search:
+
+```bash
+scripts/run_optimize_layers.sh configs/optimize/qwen3_nvfp4_dynamic_scale_search_gptq.json
+```
+
+Use `--nvfp4-scale-code-offsets -3 -2 -1 0 1 2 3` to control the searched E4M3 block-scale neighborhood. The fixed pre-search variant is `nvfp4_hessian_scale_search_gptq`.
+
 Run the same method with block-Hadamard rotation and dynamic MXFP4 activation scale search:
 
 ```bash
@@ -651,7 +659,7 @@ sepquant-report-experiments outputs/experiments \
 
 - Current quantization is fake quantization for research validation, not packed-kernel inference.
 - `include_lm_head` defaults to `false` because most quantization baselines leave the LM head unquantized.
-- `activation_format` can be set to `none`, `mxfp4`, `mxfp4_search`, or `nvfp4`.
+- `activation_format` can be set to `none`, `mxfp4`, `mxfp4_search`, `nvfp4`, or `nvfp4_search`.
 - Downstream task results are saved to `output_path` when provided.
 - Use small `limit` values for task smoke tests before running full evaluations.
 

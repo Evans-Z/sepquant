@@ -35,10 +35,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--calibration-dir", type=Path, default=None)
     parser.add_argument("--candidates", nargs="+", default=["mxfp4", "nvfp4"])
     parser.add_argument("--weight-format", default="mxfp4", choices=["mxfp4", "nvfp4"])
-    parser.add_argument("--activation-format", default="none", choices=["none", "mxfp4", "mxfp4_search", "nvfp4"])
+    parser.add_argument(
+        "--activation-format",
+        default="none",
+        choices=["none", "mxfp4", "mxfp4_search", "nvfp4", "nvfp4_search"],
+    )
     parser.add_argument("--gptq-damp-percent", type=float, default=0.01)
     parser.add_argument("--mxfp4-scale-offsets", nargs="+", type=int, default=[-2, -1, 0, 1, 2])
     parser.add_argument("--mxfp4-scale-objective", default="block", choices=["identity", "diag", "block"])
+    parser.add_argument(
+        "--nvfp4-scale-code-offsets",
+        nargs="+",
+        type=int,
+        default=[-3, -2, -1, 0, 1, 2, 3],
+    )
     parser.add_argument("--rotation", default="none", choices=["none", "block_hadamard"])
     parser.add_argument("--include-lm-head", action="store_true")
     parser.add_argument("--device", default="auto")
@@ -65,6 +75,10 @@ def parse_args() -> argparse.Namespace:
     if isinstance(args.mxfp4_scale_offsets, str):
         args.mxfp4_scale_offsets = [
             int(item.strip()) for item in args.mxfp4_scale_offsets.split(",") if item.strip()
+        ]
+    if isinstance(args.nvfp4_scale_code_offsets, str):
+        args.nvfp4_scale_code_offsets = [
+            int(item.strip()) for item in args.nvfp4_scale_code_offsets.split(",") if item.strip()
         ]
     return args
 
@@ -97,6 +111,7 @@ def main() -> None:
         gptq_damp_percent=args.gptq_damp_percent,
         mxfp4_scale_offsets=args.mxfp4_scale_offsets,
         mxfp4_scale_objective=args.mxfp4_scale_objective,
+        nvfp4_scale_code_offsets=args.nvfp4_scale_code_offsets,
         rotation=args.rotation,
         device=args.device,
     )
@@ -118,6 +133,7 @@ def main() -> None:
             "gptq_damp_percent": args.gptq_damp_percent,
             "mxfp4_scale_offsets": args.mxfp4_scale_offsets,
             "mxfp4_scale_objective": args.mxfp4_scale_objective,
+            "nvfp4_scale_code_offsets": args.nvfp4_scale_code_offsets,
             "rotation": args.rotation,
             "device": args.device,
         },

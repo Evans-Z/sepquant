@@ -7,6 +7,10 @@ from sepquant.optimization.methods.mxfp4_scale_search_gptq import (
     MXFP4RotationSelectGPTQOptimizer,
     MXFP4ScaleSearchGPTQOptimizer,
 )
+from sepquant.optimization.methods.nvfp4_scale_search_gptq import (
+    NVFP4DynamicScaleSearchGPTQOptimizer,
+    NVFP4ScaleSearchGPTQOptimizer,
+)
 from sepquant.optimization.methods.weight_format_search import WeightFormatSearchOptimizer
 
 
@@ -19,6 +23,7 @@ def build_layer_optimizer(
     gptq_damp_percent: float = 0.01,
     mxfp4_scale_offsets: list[int] | None = None,
     mxfp4_scale_objective: str = "block",
+    nvfp4_scale_code_offsets: list[int] | None = None,
     rotation: str = "none",
     device: str = "auto",
 ):
@@ -98,6 +103,28 @@ def build_layer_optimizer(
             name="mxfp4_dynamic_scale_search_gptq_rotation_select",
             device=device,
         )
+    if method == "nvfp4_hessian_scale_search_gptq":
+        if weight_format != "nvfp4":
+            raise ValueError("nvfp4_hessian_scale_search_gptq only supports weight_format='nvfp4'")
+        return NVFP4ScaleSearchGPTQOptimizer(
+            activation_format=activation_format,
+            damp_percent=gptq_damp_percent,
+            scale_code_offsets=nvfp4_scale_code_offsets or [-3, -2, -1, 0, 1, 2, 3],
+            scale_objective=mxfp4_scale_objective,
+            rotation=rotation,
+            device=device,
+        )
+    if method == "nvfp4_dynamic_scale_search_gptq":
+        if weight_format != "nvfp4":
+            raise ValueError("nvfp4_dynamic_scale_search_gptq only supports weight_format='nvfp4'")
+        return NVFP4DynamicScaleSearchGPTQOptimizer(
+            activation_format=activation_format,
+            damp_percent=gptq_damp_percent,
+            scale_code_offsets=nvfp4_scale_code_offsets or [-3, -2, -1, 0, 1, 2, 3],
+            scale_objective=mxfp4_scale_objective,
+            rotation=rotation,
+            device=device,
+        )
     raise ValueError(f"Unsupported optimization method: {method}")
 
 
@@ -107,6 +134,8 @@ __all__ = [
     "MXFP4HessianScaleSearchOptimizer",
     "MXFP4RotationSelectGPTQOptimizer",
     "MXFP4ScaleSearchGPTQOptimizer",
+    "NVFP4DynamicScaleSearchGPTQOptimizer",
+    "NVFP4ScaleSearchGPTQOptimizer",
     "WeightFormatSearchOptimizer",
     "build_layer_optimizer",
 ]
