@@ -1,6 +1,8 @@
 import torch
 
 from sepquant.formats import (
+    HIF4Format,
+    HIF4ScaleSearchFormat,
     MXFP4Format,
     MXFP4ScaleSearchFormat,
     NVFP4Format,
@@ -64,6 +66,62 @@ def test_nvfp4_search_is_no_worse_than_default_scale() -> None:
     tensor = torch.randn(4, 65)
     default = get_fp4_format("nvfp4").quantize(tensor)
     searched = get_fp4_format("nvfp4_search").quantize(tensor)
+
+    default_error = torch.sum((tensor - default).square())
+    searched_error = torch.sum((tensor - searched).square())
+
+    assert searched_error <= default_error
+
+
+def test_hif4_uses_expected_hierarchical_levels() -> None:
+    torch.manual_seed(0)
+    fmt = get_fp4_format("hif4")
+    tensor = torch.randn(2, 3, 128)
+
+    quantized = fmt.quantize(tensor)
+
+    assert isinstance(fmt, HIF4Format)
+    assert fmt.block_size == 64
+    assert quantized.shape == tensor.shape
+    assert torch.isfinite(quantized).all()
+
+
+def test_hif4_quantize_preserves_shape_with_padding() -> None:
+    fmt = get_fp4_format("hif4")
+    tensor = torch.randn(2, 3, 65)
+
+    quantized = fmt.quantize(tensor)
+
+    assert quantized.shape == tensor.shape
+    assert torch.isfinite(quantized).all()
+
+
+def test_hif4_quantize_preserves_zeros() -> None:
+    fmt = get_fp4_format("hif4")
+    tensor = torch.zeros(2, 65)
+
+    quantized = fmt.quantize(tensor)
+
+    assert torch.equal(quantized, tensor)
+
+
+def test_hif4_search_quantizes_hidden_dimension_blocks() -> None:
+    fmt = get_fp4_format("hif4_search")
+    tensor = torch.randn(2, 3, 65)
+
+    quantized = fmt.quantize(tensor)
+
+    assert quantized.shape == tensor.shape
+    assert torch.isfinite(quantized).all()
+    assert isinstance(fmt, HIF4ScaleSearchFormat)
+    assert fmt.block_size == 64
+
+
+def test_hif4_search_is_no_worse_than_default_level1_scale() -> None:
+    torch.manual_seed(0)
+    tensor = torch.randn(4, 129)
+    default = get_fp4_format("hif4").quantize(tensor)
+    searched = get_fp4_format("hif4_search").quantize(tensor)
 
     default_error = torch.sum((tensor - default).square())
     searched_error = torch.sum((tensor - searched).square())

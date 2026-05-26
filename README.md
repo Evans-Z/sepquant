@@ -569,6 +569,14 @@ scripts/run_optimize_layers.sh configs/optimize/qwen3_nvfp4_dynamic_scale_search
 
 Use `--nvfp4-scale-code-offsets -3 -2 -1 0 1 2 3` to control the searched E4M3 block-scale neighborhood. The fixed pre-search variant is `nvfp4_hessian_scale_search_gptq`.
 
+HIF4 supports GPTQ with level-1 E6M2 scale-code search:
+
+```bash
+scripts/run_optimize_layers.sh configs/optimize/qwen3_hif4_dynamic_scale_search_gptq.json
+```
+
+Use `--hif4-level1-code-offsets -2 -1 0 1 2` to control the searched level-1 scale-code neighborhood. The fixed pre-search variant is `hif4_hessian_scale_search_gptq`.
+
 Run the same method with block-Hadamard rotation and dynamic MXFP4 activation scale search:
 
 ```bash
@@ -659,7 +667,7 @@ sepquant-report-experiments outputs/experiments \
 
 - Current quantization is fake quantization for research validation, not packed-kernel inference.
 - `include_lm_head` defaults to `false` because most quantization baselines leave the LM head unquantized.
-- `activation_format` can be set to `none`, `mxfp4`, `mxfp4_search`, `nvfp4`, or `nvfp4_search`.
+- `activation_format` can be set to `none`, `mxfp4`, `mxfp4_search`, `nvfp4`, `nvfp4_search`, `hif4`, or `hif4_search`.
 - Downstream task results are saved to `output_path` when provided.
 - Use small `limit` values for task smoke tests before running full evaluations.
 

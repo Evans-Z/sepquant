@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from sepquant.formats.base import FP4Format
+from sepquant.formats.hifp import HIF4Format, HIF4ScaleSearchFormat
 from sepquant.formats.mxfp import MXFP4Format, MXFP4ScaleSearchFormat
 from sepquant.formats.nvfp import NVFP4Format, NVFP4ScaleSearchFormat
 
@@ -17,5 +18,9 @@ def get_fp4_format(name: str) -> FP4Format:
         return NVFP4Format()
     if normalized in {"nvfp4_search", "nvfp4-scale-search", "nvfp4_scale_search"}:
         return NVFP4ScaleSearchFormat()
+    if normalized == "hif4":
+        return HIF4Format()
+    if normalized in {"hif4_search", "hif4-scale-search", "hif4_scale_search"}:
+        return HIF4ScaleSearchFormat()
     raise ValueError(f"Unsupported FP4 format: {name}")
 

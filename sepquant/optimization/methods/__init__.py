@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from sepquant.optimization.methods.gptq import GPTQOptimizer
+from sepquant.optimization.methods.hif4_scale_search_gptq import (
+    HIF4DynamicScaleSearchGPTQOptimizer,
+    HIF4ScaleSearchGPTQOptimizer,
+)
 from sepquant.optimization.methods.mxfp4_scale_search import MXFP4HessianScaleSearchOptimizer
 from sepquant.optimization.methods.mxfp4_scale_search_gptq import (
     MXFP4DynamicScaleSearchGPTQOptimizer,
@@ -24,6 +28,7 @@ def build_layer_optimizer(
     mxfp4_scale_offsets: list[int] | None = None,
     mxfp4_scale_objective: str = "block",
     nvfp4_scale_code_offsets: list[int] | None = None,
+    hif4_level1_code_offsets: list[int] | None = None,
     rotation: str = "none",
     device: str = "auto",
 ):
@@ -125,11 +130,35 @@ def build_layer_optimizer(
             rotation=rotation,
             device=device,
         )
+    if method == "hif4_hessian_scale_search_gptq":
+        if weight_format != "hif4":
+            raise ValueError("hif4_hessian_scale_search_gptq only supports weight_format='hif4'")
+        return HIF4ScaleSearchGPTQOptimizer(
+            activation_format=activation_format,
+            damp_percent=gptq_damp_percent,
+            level1_code_offsets=hif4_level1_code_offsets or [-2, -1, 0, 1, 2],
+            scale_objective=mxfp4_scale_objective,
+            rotation=rotation,
+            device=device,
+        )
+    if method == "hif4_dynamic_scale_search_gptq":
+        if weight_format != "hif4":
+            raise ValueError("hif4_dynamic_scale_search_gptq only supports weight_format='hif4'")
+        return HIF4DynamicScaleSearchGPTQOptimizer(
+            activation_format=activation_format,
+            damp_percent=gptq_damp_percent,
+            level1_code_offsets=hif4_level1_code_offsets or [-2, -1, 0, 1, 2],
+            scale_objective=mxfp4_scale_objective,
+            rotation=rotation,
+            device=device,
+        )
     raise ValueError(f"Unsupported optimization method: {method}")
 
 
 __all__ = [
     "GPTQOptimizer",
+    "HIF4DynamicScaleSearchGPTQOptimizer",
+    "HIF4ScaleSearchGPTQOptimizer",
     "MXFP4DynamicScaleSearchGPTQOptimizer",
     "MXFP4HessianScaleSearchOptimizer",
     "MXFP4RotationSelectGPTQOptimizer",

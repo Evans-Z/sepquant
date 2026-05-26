@@ -61,7 +61,7 @@ class NVFP4ScaleSearchFormat:
 
     name: str = "nvfp4_search"
     block_size: int = 16
-    scale_code_offsets: tuple[int, ...] = (-3, -2, -1, 0, 1, 2, 3)
+    scale_code_offsets: tuple[int, ...] = (-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8)
     eps: float = 1e-12
 
     def quantize(self, tensor: torch.Tensor) -> torch.Tensor:
