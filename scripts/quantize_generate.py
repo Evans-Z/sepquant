@@ -16,7 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model-type",
         default="auto",
-        choices=["auto", "qwen", "qwen2", "qwen3", "llama", "mistral", "gemma", "opt", "generic"],
+        choices=["auto", "qwen", "qwen2", "qwen3", "qwen3_moe", "llama", "mistral", "gemma", "opt", "generic"],
     )
     parser.add_argument("--weight-format", default="mxfp4", choices=["none", "mxfp4", "nvfp4", "hif4"])
     parser.add_argument(

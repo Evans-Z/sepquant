@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model-type",
         default="auto",
-        choices=["auto", "qwen", "qwen2", "qwen3", "llama", "mistral", "gemma", "opt", "generic"],
+        choices=["auto", "qwen", "qwen2", "qwen3", "qwen3_moe", "llama", "mistral", "gemma", "opt", "generic"],
     )
     parser.add_argument("--include-lm-head", action="store_true")
     parser.add_argument("--dataset", default="wikitext")

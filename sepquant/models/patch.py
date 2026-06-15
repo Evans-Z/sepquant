@@ -15,6 +15,7 @@ ModelType = Literal[
     "qwen",
     "qwen2",
     "qwen3",
+    "qwen3_moe",
     "llama",
     "mistral",
     "gemma",
@@ -59,6 +60,7 @@ SUPPORTED_SUFFIX_MODEL_TYPES = {
     "qwen",
     "qwen2",
     "qwen3",
+    "qwen3_moe",
     "llama",
     "mistral",
     "gemma",
@@ -136,7 +138,7 @@ def _resolve_model_type(model: nn.Module, model_type: ModelType) -> str:
 
     config_model_type = getattr(getattr(model, "config", None), "model_type", None)
     if isinstance(config_model_type, str):
-        normalized = config_model_type.lower()
+        normalized = config_model_type.lower().replace("-", "_")
         if normalized in SUPPORTED_SUFFIX_MODEL_TYPES:
             return normalized
     return "generic"

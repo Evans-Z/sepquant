@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model-type",
         default="auto",
-        choices=["auto", "qwen", "qwen2", "qwen3", "llama", "mistral", "gemma", "opt", "generic"],
+        choices=["auto", "qwen", "qwen2", "qwen3", "qwen3_moe", "llama", "mistral", "gemma", "opt", "generic"],
     )
     parser.add_argument("--method", default="weight_format_search")
     parser.add_argument("--calibration-dir", type=Path, default=None)

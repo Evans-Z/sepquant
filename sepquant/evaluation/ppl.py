@@ -28,7 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model-type",
         default="auto",
-        choices=["auto", "qwen", "qwen2", "qwen3", "llama", "mistral", "gemma", "opt", "generic"],
+        choices=["auto", "qwen", "qwen2", "qwen3", "qwen3_moe", "llama", "mistral", "gemma", "opt", "generic"],
         help="Model family used to select linear layers for quantization.",
     )
     parser.add_argument("--dataset", default="wikitext", help="Dataset name.")

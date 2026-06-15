@@ -11,7 +11,7 @@ Current implementation focuses on fake quantization for:
 
 - MXFP4
 - NVFP4
-- Qwen/Qwen3-style decoder models
+- Qwen/Qwen3-style decoder models, including Qwen3-MoE expert projections
 - OPT-style decoder models
 - Wikitext2 perplexity evaluation
 - Downstream task evaluation through `lm-eval-harness`
@@ -294,6 +294,7 @@ auto
 qwen
 qwen2
 qwen3
+qwen3_moe
 llama
 mistral
 gemma
@@ -302,6 +303,7 @@ generic
 ```
 
 For `auto`, SepQuant reads `model.config.model_type` and falls back to `generic` if the model family is unknown.
+For Qwen3-MoE models such as Qwen3-30B-A3B, `auto` resolves Hugging Face `qwen3_moe` configs and patches attention projections plus expert `gate_proj`/`up_proj`/`down_proj` layers. Router linears such as `gate` and `shared_expert_gate` are intentionally left in floating point.
 
 ## Quantization Plans
 

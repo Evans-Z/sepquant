@@ -14,6 +14,32 @@ class TinyQwenBlock(nn.Module):
         self.other = nn.Linear(8, 8)
 
 
+class TinyQwen3MoeMlp(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.gate = nn.Linear(8, 2, bias=False)
+        self.experts = nn.ModuleList([TinyQwen3MoeExpert()])
+        self.shared_expert = TinyQwen3MoeExpert()
+        self.shared_expert_gate = nn.Linear(8, 1, bias=False)
+
+
+class TinyQwen3MoeExpert(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.gate_proj = nn.Linear(8, 16)
+        self.up_proj = nn.Linear(8, 16)
+        self.down_proj = nn.Linear(16, 8)
+
+
+class TinyQwen3MoeBlock(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.config = type("Config", (), {"model_type": "qwen3_moe"})()
+        self.q_proj = nn.Linear(8, 8)
+        self.o_proj = nn.Linear(8, 8)
+        self.mlp = TinyQwen3MoeMlp()
+
+
 class TinyOptBlock(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -44,6 +70,29 @@ def test_patch_qwen_linears_uses_generic_suffix_filter() -> None:
     assert isinstance(model.q_proj, QuantLinear)
     assert isinstance(model.k_proj, QuantLinear)
     assert isinstance(model.other, nn.Linear)
+
+
+def test_patch_qwen3_moe_auto_uses_suffix_filter_and_skips_routers() -> None:
+    model = TinyQwen3MoeBlock()
+
+    report = patch_causal_lm_linears(
+        model,
+        weight_format=get_fp4_format("mxfp4"),
+        model_type="auto",
+    )
+
+    assert report.model_type == "qwen3_moe"
+    assert report.replaced == 8
+    assert isinstance(model.q_proj, QuantLinear)
+    assert isinstance(model.o_proj, QuantLinear)
+    assert isinstance(model.mlp.gate, nn.Linear)
+    assert isinstance(model.mlp.experts[0].gate_proj, QuantLinear)
+    assert isinstance(model.mlp.experts[0].up_proj, QuantLinear)
+    assert isinstance(model.mlp.experts[0].down_proj, QuantLinear)
+    assert isinstance(model.mlp.shared_expert.gate_proj, QuantLinear)
+    assert isinstance(model.mlp.shared_expert.up_proj, QuantLinear)
+    assert isinstance(model.mlp.shared_expert.down_proj, QuantLinear)
+    assert isinstance(model.mlp.shared_expert_gate, nn.Linear)
 
 
 def test_patch_opt_linears_uses_opt_suffix_filter() -> None:
