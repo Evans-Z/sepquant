@@ -6,6 +6,7 @@ from typing import Literal
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 from tqdm import tqdm
 
 from sepquant.models import TargetLinear
@@ -66,8 +67,18 @@ def collect_linear_calibration(
     input_counts: dict[str, int] = {target.name: 0 for target in targets}
     gram_counts: dict[str, int] = {target.name: 0 for target in targets}
     hooks = []
+    qwen3_moe_expert_targets: dict[int, tuple[nn.Module, list[TargetLinear]]] = {}
 
     for target in targets:
+        if target.source == "qwen3_moe_expert":
+            experts = getattr(target.module, "experts", None)
+            if isinstance(experts, nn.Module):
+                key = id(experts)
+                if key not in qwen3_moe_expert_targets:
+                    qwen3_moe_expert_targets[key] = (experts, [])
+                qwen3_moe_expert_targets[key][1].append(target)
+            continue
+
         hooks.append(
             target.module.register_forward_hook(
                 _make_capture_hook(
@@ -79,6 +90,21 @@ def collect_linear_calibration(
                     max_tokens_per_layer=max_tokens_per_layer,
                     capture_mode=capture_mode,
                     store_inputs=_matches_any(target.name, input_layer_patterns),
+                )
+            )
+        )
+    for experts, expert_targets in qwen3_moe_expert_targets.values():
+        hooks.append(
+            experts.register_forward_hook(
+                _make_qwen3_moe_expert_capture_hook(
+                    targets=expert_targets,
+                    captured_inputs=captured_inputs,
+                    grams=grams,
+                    input_counts=input_counts,
+                    gram_counts=gram_counts,
+                    max_tokens_per_layer=max_tokens_per_layer,
+                    capture_mode=capture_mode,
+                    input_layer_patterns=input_layer_patterns,
                 )
             )
         )
@@ -113,25 +139,122 @@ def _make_capture_hook(
     def hook(_module: nn.Module, inputs: tuple[torch.Tensor, ...], _output: torch.Tensor) -> None:
         activation = inputs[0].detach()
         flattened = activation.reshape(-1, activation.shape[-1]).float().cpu()
-
-        if capture_mode in {"gram", "both"}:
-            gram = flattened.t().matmul(flattened)
-            if name in grams:
-                grams[name] += gram
-            else:
-                grams[name] = gram
-            gram_counts[name] += flattened.shape[0]
-
-        if capture_mode in {"inputs", "both"} and store_inputs:
-            if input_counts[name] >= max_tokens_per_layer:
-                return
-            remaining = max_tokens_per_layer - input_counts[name]
-            if flattened.shape[0] > remaining:
-                flattened = flattened[:remaining]
-            captured_inputs[name].append(flattened)
-            input_counts[name] += flattened.shape[0]
+        _record_flattened_activation(
+            name=name,
+            flattened=flattened,
+            captured_inputs=captured_inputs,
+            grams=grams,
+            input_counts=input_counts,
+            gram_counts=gram_counts,
+            max_tokens_per_layer=max_tokens_per_layer,
+            capture_mode=capture_mode,
+            store_inputs=store_inputs,
+        )
 
     return hook
+
+
+def _make_qwen3_moe_expert_capture_hook(
+    *,
+    targets: list[TargetLinear],
+    captured_inputs: dict[str, list[torch.Tensor]],
+    grams: dict[str, torch.Tensor],
+    input_counts: dict[str, int],
+    gram_counts: dict[str, int],
+    max_tokens_per_layer: int,
+    capture_mode: CaptureMode,
+    input_layer_patterns: list[str] | None,
+):
+    targets_by_expert: dict[int, dict[str, TargetLinear]] = {}
+    for target in targets:
+        if target.expert_idx is None or target.projection is None:
+            continue
+        targets_by_expert.setdefault(target.expert_idx, {})[target.projection] = target
+
+    def hook(module: nn.Module, inputs: tuple[torch.Tensor, ...], _output: torch.Tensor) -> None:
+        if len(inputs) < 2:
+            return
+        hidden_states = inputs[0].detach()
+        top_k_index = inputs[1].detach()
+        if hidden_states.ndim != 2 or top_k_index.ndim != 2:
+            return
+
+        gate_up_proj = getattr(module, "gate_up_proj", None)
+        if gate_up_proj is None:
+            return
+
+        with torch.no_grad():
+            for expert_idx, projection_targets in targets_by_expert.items():
+                token_mask = (top_k_index == expert_idx).any(dim=-1)
+                if not token_mask.any():
+                    continue
+
+                expert_inputs = hidden_states[token_mask]
+                target = projection_targets.get("gate_up_proj")
+                if target is not None:
+                    _record_flattened_activation(
+                        name=target.name,
+                        flattened=expert_inputs.reshape(-1, expert_inputs.shape[-1]).float().cpu(),
+                        captured_inputs=captured_inputs,
+                        grams=grams,
+                        input_counts=input_counts,
+                        gram_counts=gram_counts,
+                        max_tokens_per_layer=max_tokens_per_layer,
+                        capture_mode=capture_mode,
+                        store_inputs=_matches_any(target.name, input_layer_patterns),
+                    )
+
+                target = projection_targets.get("down_proj")
+                if target is None:
+                    continue
+                gate, up = F.linear(expert_inputs, gate_up_proj[expert_idx]).chunk(2, dim=-1)
+                down_inputs = module.act_fn(gate) * up
+                _record_flattened_activation(
+                    name=target.name,
+                    flattened=down_inputs.reshape(-1, down_inputs.shape[-1]).float().cpu(),
+                    captured_inputs=captured_inputs,
+                    grams=grams,
+                    input_counts=input_counts,
+                    gram_counts=gram_counts,
+                    max_tokens_per_layer=max_tokens_per_layer,
+                    capture_mode=capture_mode,
+                    store_inputs=_matches_any(target.name, input_layer_patterns),
+                )
+
+    return hook
+
+
+def _record_flattened_activation(
+    *,
+    name: str,
+    flattened: torch.Tensor,
+    captured_inputs: dict[str, list[torch.Tensor]],
+    grams: dict[str, torch.Tensor],
+    input_counts: dict[str, int],
+    gram_counts: dict[str, int],
+    max_tokens_per_layer: int,
+    capture_mode: CaptureMode,
+    store_inputs: bool,
+) -> None:
+    if flattened.numel() == 0:
+        return
+
+    if capture_mode in {"gram", "both"}:
+        gram = flattened.t().matmul(flattened)
+        if name in grams:
+            grams[name] += gram
+        else:
+            grams[name] = gram
+        gram_counts[name] += flattened.shape[0]
+
+    if capture_mode in {"inputs", "both"} and store_inputs:
+        if input_counts[name] >= max_tokens_per_layer:
+            return
+        remaining = max_tokens_per_layer - input_counts[name]
+        if flattened.shape[0] > remaining:
+            flattened = flattened[:remaining]
+        captured_inputs[name].append(flattened)
+        input_counts[name] += flattened.shape[0]
 
 
 def _matches_any(layer_name: str, patterns: list[str] | None) -> bool:

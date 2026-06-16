@@ -16,7 +16,7 @@ from sepquant.quantization import LayerQuantizationSpec
 @dataclass(frozen=True)
 class LayerOptimizationContext:
     layer_name: str
-    module: nn.Linear
+    module: nn.Module
     gram: torch.Tensor | None = None
     inputs: torch.Tensor | None = None
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+import torch
 from torch import nn
 
 from sepquant.formats import FP4Format, get_fp4_format
@@ -34,7 +35,47 @@ class PatchReport:
 @dataclass(frozen=True)
 class TargetLinear:
     name: str
-    module: nn.Linear
+    module: nn.Module
+    source: Literal["linear", "qwen3_moe_expert"] = "linear"
+    owner_name: str | None = None
+    expert_idx: int | None = None
+    projection: Literal["gate_up_proj", "down_proj"] | None = None
+
+
+class Qwen3MoeExpertLinearView(nn.Module):
+    """Linear-like view over one Qwen3-MoE expert projection stored in 3D params."""
+
+    def __init__(
+        self,
+        experts: nn.Module,
+        *,
+        expert_idx: int,
+        projection: Literal["gate_up_proj", "down_proj"],
+    ) -> None:
+        super().__init__()
+        self.experts = experts
+        self.expert_idx = expert_idx
+        self.projection = projection
+
+    @property
+    def weight(self) -> torch.Tensor:
+        if self.projection == "down_proj":
+            return self.experts.down_proj[self.expert_idx]
+        if self.projection == "gate_up_proj":
+            return self.experts.gate_up_proj[self.expert_idx]
+        raise ValueError(f"Unsupported Qwen3-MoE expert projection: {self.projection}")
+
+    @property
+    def bias(self) -> None:
+        return None
+
+    @property
+    def in_features(self) -> int:
+        return self.weight.shape[1]
+
+    @property
+    def out_features(self) -> int:
+        return self.weight.shape[0]
 
 
 TRANSFORMER_LINEAR_SUFFIXES = (
@@ -91,11 +132,34 @@ def patch_causal_lm_linears(
     for target in targets:
         name = target.name
         module = target.module
-        parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
-        parent = model.get_submodule(parent_name) if parent_name else model
+        if target.source == "qwen3_moe_expert":
+            if not isinstance(module, Qwen3MoeExpertLinearView):
+                skipped.append(name)
+                continue
+
+            layer_weight_format, layer_activation_format, layer_rotation = _resolve_layer_formats(
+                layer_name=name,
+                fallback_weight_format=weight_format,
+                fallback_activation_format=activation_format,
+                fallback_rotation=rotation,
+                quantization_plan=quantization_plan,
+            )
+            if layer_weight_format is None:
+                skipped.append(name)
+                continue
+            if layer_rotation != "none":
+                skipped.append(name)
+                continue
+            if not prequantized_weight:
+                with torch.no_grad():
+                    module.weight.copy_(layer_weight_format.quantize(module.weight.detach()))
+            continue
+
         if not isinstance(module, nn.Linear):
             skipped.append(name)
             continue
+        parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
+        parent = model.get_submodule(parent_name) if parent_name else model
 
         layer_weight_format, layer_activation_format, layer_rotation = _resolve_layer_formats(
             layer_name=name,
@@ -153,6 +217,10 @@ def get_target_linears(
     resolved_model_type = _resolve_model_type(model, model_type)
     targets: list[TargetLinear] = []
     for name, module in model.named_modules():
+        if resolved_model_type == "qwen3_moe" and _is_qwen3_moe_experts(module):
+            targets.extend(_get_qwen3_moe_expert_targets(name, module))
+            continue
+
         if not isinstance(module, nn.Linear):
             continue
 
@@ -168,6 +236,40 @@ def get_target_linears(
             targets.append(TargetLinear(name=name, module=module))
 
     return resolved_model_type, targets
+
+
+def _is_qwen3_moe_experts(module: nn.Module) -> bool:
+    gate_up_proj = getattr(module, "gate_up_proj", None)
+    down_proj = getattr(module, "down_proj", None)
+    num_experts = getattr(module, "num_experts", None)
+    return (
+        isinstance(gate_up_proj, torch.nn.Parameter)
+        and isinstance(down_proj, torch.nn.Parameter)
+        and gate_up_proj.ndim == 3
+        and down_proj.ndim == 3
+        and isinstance(num_experts, int)
+    )
+
+
+def _get_qwen3_moe_expert_targets(owner_name: str, experts: nn.Module) -> list[TargetLinear]:
+    targets: list[TargetLinear] = []
+    for expert_idx in range(experts.num_experts):
+        for projection in ("gate_up_proj", "down_proj"):
+            targets.append(
+                TargetLinear(
+                    name=f"{owner_name}.{expert_idx}.{projection}",
+                    module=Qwen3MoeExpertLinearView(
+                        experts,
+                        expert_idx=expert_idx,
+                        projection=projection,
+                    ),
+                    source="qwen3_moe_expert",
+                    owner_name=owner_name,
+                    expert_idx=expert_idx,
+                    projection=projection,
+                )
+            )
+    return targets
 
 
 def _resolve_layer_formats(

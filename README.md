@@ -303,7 +303,7 @@ generic
 ```
 
 For `auto`, SepQuant reads `model.config.model_type` and falls back to `generic` if the model family is unknown.
-For Qwen3-MoE models such as Qwen3-30B-A3B, `auto` resolves Hugging Face `qwen3_moe` configs and patches attention projections plus expert `gate_proj`/`up_proj`/`down_proj` layers. Router linears such as `gate` and `shared_expert_gate` are intentionally left in floating point.
+For Qwen3-MoE models such as Qwen3-30B-A3B, `auto` resolves Hugging Face `qwen3_moe` configs and patches attention projections, dense `Qwen3MoeMLP` projections, and parameter-backed sparse expert `gate_up_proj`/`down_proj` views. Router weights such as `mlp.gate.weight` are intentionally left in floating point. Sparse expert targets are named like `model.layers.1.mlp.experts.3.gate_up_proj` in calibration metadata and quantization plans.
 
 ## Quantization Plans
 
@@ -364,6 +364,12 @@ Collect Qwen3 calibration from Wikitext2:
 
 ```bash
 scripts/run_collect_calib.sh configs/calib/qwen3_wikitext2.json
+```
+
+Collect Qwen3-MoE calibration from Wikitext2:
+
+```bash
+scripts/run_collect_calib.sh configs/calib/qwen3_moe_wikitext2.json
 ```
 
 Collect OPT-125M calibration from Wikitext2:

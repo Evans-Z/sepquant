@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from sepquant.models import patch_causal_lm_linears
@@ -193,6 +194,18 @@ def _save_sepquant_checkpoint(
             continue
         if hasattr(module, "weight"):
             module.weight.copy_(optimized_weights[module_name].to(module.weight.device, module.weight.dtype))
+    _, targets = get_target_linears(
+        model,
+        model_type=model_type,
+        include_lm_head=include_lm_head,
+    )
+    for target in targets:
+        if target.source != "qwen3_moe_expert" or target.name not in optimized_weights:
+            continue
+        with torch.no_grad():
+            target.module.weight.copy_(
+                optimized_weights[target.name].to(target.module.weight.device, target.module.weight.dtype)
+            )
 
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     tokenizer.save_pretrained(checkpoint_dir)
