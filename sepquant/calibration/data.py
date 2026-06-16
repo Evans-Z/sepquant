@@ -17,6 +17,7 @@ def build_calibration_batches(
     nsamples: int,
     seed: int,
     sequence_length: int,
+    batch_size: int = 1,
 ) -> list[torch.Tensor]:
     """Build fixed-length calibration token batches from a text dataset."""
 
@@ -24,6 +25,8 @@ def build_calibration_batches(
         raise ValueError("nsamples must be positive")
     if sequence_length <= 0:
         raise ValueError("sequence_length must be positive")
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
 
     dataset_args = [dataset_name]
     if dataset_config:
@@ -38,10 +41,14 @@ def build_calibration_batches(
         )
 
     rng = random.Random(seed)
-    batches: list[torch.Tensor] = []
+    samples: list[torch.Tensor] = []
     for _ in range(nsamples):
         begin = rng.randint(0, encoded.shape[1] - sequence_length - 1)
         end = begin + sequence_length
-        batches.append(encoded[:, begin:end])
-    return batches
+        samples.append(encoded[:, begin:end])
+
+    return [
+        torch.cat(samples[begin : begin + batch_size], dim=0)
+        for begin in range(0, len(samples), batch_size)
+    ]
 

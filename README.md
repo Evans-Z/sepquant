@@ -393,6 +393,7 @@ Important calibration controls:
   "split": "train",
   "text_column": "text",
   "nsamples": 16,
+  "batch_size": 1,
   "seed": 0,
   "sequence_length": 512,
   "max_tokens_per_layer": 2048,
@@ -405,7 +406,8 @@ These correspond to:
 
 - `seed`: random seed for sampling train chunks.
 - `sequence_length`: token length of each calibration sample.
-- `nsamples`: number of sampled calibration chunks.
+- `nsamples`: total number of sampled calibration chunks.
+- `batch_size`: number of sampled chunks per model forward; the final batch may be smaller.
 - `capture_mode`: one of `gram`, `inputs`, or `both`.
 - `max_tokens_per_layer`: maximum raw input activation rows per linear layer.
 - `input_layer_patterns`: optional wildcard list controlling which layers store raw inputs.

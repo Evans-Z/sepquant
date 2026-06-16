@@ -38,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--split", default="train")
     parser.add_argument("--text-column", default="text")
     parser.add_argument("--nsamples", type=int, default=16)
+    parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--sequence-length", type=int, default=512)
     parser.add_argument("--max-tokens-per-layer", type=int, default=2048)
@@ -91,6 +92,7 @@ def main() -> None:
         nsamples=args.nsamples,
         seed=args.seed,
         sequence_length=args.sequence_length,
+        batch_size=args.batch_size,
     )
     capture = collect_linear_calibration(
         model=model,
@@ -112,6 +114,7 @@ def main() -> None:
             "split": args.split,
             "text_column": args.text_column,
             "nsamples": args.nsamples,
+            "batch_size": args.batch_size,
             "seed": args.seed,
             "sequence_length": args.sequence_length,
             "max_tokens_per_layer": args.max_tokens_per_layer,
