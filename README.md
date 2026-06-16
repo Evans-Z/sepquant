@@ -557,6 +557,16 @@ scripts/run_optimize_layers.sh configs/optimize/opt125m_gptq_mxfp4.json \
   --save-quantized-checkpoint outputs/checkpoints/opt125m_gptq_mxfp4
 ```
 
+For MoE models, experts with too few routed calibration tokens can fall back to a data-free weight format instead of running GPTQ on a weak or missing Gram matrix:
+
+```bash
+scripts/run_optimize_layers.sh configs/optimize/qwen3_mxfp4_dynamic_scale_search_gptq.json \
+  --min-tokens-per-layer 128 \
+  --fallback-weight-format mxfp4_search
+```
+
+Fallback weight formats can be `none`, `mxfp4`, `mxfp4_search`, `nvfp4`, `nvfp4_search`, `hif4`, or `hif4_search`. Use `none` to leave under-sampled layers disabled/FP in the plan.
+
 Run MXFP4 Hessian-aware scale-code search:
 
 ```bash

@@ -16,6 +16,18 @@ from sepquant.optimization.methods import build_layer_optimizer
 from sepquant.quantization import QuantizationPlan
 
 
+WEIGHT_FORMAT_CHOICES = ["mxfp4", "nvfp4", "hif4"]
+FALLBACK_WEIGHT_FORMAT_CHOICES = [
+    "none",
+    "mxfp4",
+    "mxfp4_search",
+    "nvfp4",
+    "nvfp4_search",
+    "hif4",
+    "hif4_search",
+]
+
+
 def parse_args() -> argparse.Namespace:
     config_parser = argparse.ArgumentParser(add_help=False)
     config_parser.add_argument("--config", type=Path, help="Path to a JSON config file.")
@@ -35,7 +47,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--method", default="weight_format_search")
     parser.add_argument("--calibration-dir", type=Path, default=None)
     parser.add_argument("--candidates", nargs="+", default=["mxfp4", "nvfp4"])
-    parser.add_argument("--weight-format", default="mxfp4", choices=["mxfp4", "nvfp4", "hif4"])
+    parser.add_argument("--weight-format", default="mxfp4", choices=WEIGHT_FORMAT_CHOICES)
+    parser.add_argument(
+        "--min-tokens-per-layer",
+        type=int,
+        default=0,
+        help="Use fallback weight format for layers with fewer calibration tokens than this threshold.",
+    )
+    parser.add_argument(
+        "--fallback-weight-format",
+        default=None,
+        choices=FALLBACK_WEIGHT_FORMAT_CHOICES,
+        help="Weight format for under-sampled layers. Omit to skip them; use 'none' to keep them disabled/FP.",
+    )
     parser.add_argument(
         "--activation-format",
         default="none",
@@ -126,6 +150,10 @@ def main() -> None:
         targets=targets,
         calibration_dir=args.calibration_dir,
         optimizer=optimizer,
+        min_tokens_per_layer=args.min_tokens_per_layer,
+        fallback_weight_format=args.fallback_weight_format,
+        fallback_activation_format=args.activation_format,
+        fallback_rotation="none" if args.fallback_weight_format is not None else None,
     )
     plan = build_plan_from_results(
         results=results,
@@ -136,6 +164,8 @@ def main() -> None:
             "calibration_dir": str(args.calibration_dir),
             "candidates": args.candidates,
             "weight_format": args.weight_format,
+            "min_tokens_per_layer": args.min_tokens_per_layer,
+            "fallback_weight_format": args.fallback_weight_format,
             "activation_format": args.activation_format,
             "gptq_damp_percent": args.gptq_damp_percent,
             "mxfp4_scale_offsets": args.mxfp4_scale_offsets,

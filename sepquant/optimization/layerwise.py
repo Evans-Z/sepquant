@@ -9,7 +9,7 @@ import torch
 from torch import nn
 from tqdm import tqdm
 
-from sepquant.calibration import load_layer_gram, load_layer_input
+from sepquant.calibration import load_calibration_metadata, load_layer_gram, load_layer_input
 from sepquant.quantization import LayerQuantizationSpec
 
 
@@ -43,11 +43,37 @@ def optimize_layers(
     calibration_dir: str | Path,
     optimizer: LayerOptimizer,
     require_calibration: bool = True,
+    min_tokens_per_layer: int = 0,
+    fallback_weight_format: str | None = None,
+    fallback_activation_format: str | None = None,
+    fallback_rotation: str | None = None,
 ) -> list[LayerOptimizationResult]:
     """Run a layer optimizer while lazily loading each layer's calibration data."""
 
+    if min_tokens_per_layer < 0:
+        raise ValueError("min_tokens_per_layer must be non-negative")
+
+    metadata = load_calibration_metadata(calibration_dir) if min_tokens_per_layer > 0 else {}
+    token_counts = metadata.get("token_counts", {})
+    if not isinstance(token_counts, dict):
+        token_counts = {}
+
     results = []
     for target in tqdm(targets, desc=f"Optimizing layers ({optimizer.name})", unit="layer"):
+        token_count = int(token_counts.get(target.name, 0))
+        if min_tokens_per_layer > 0 and token_count < min_tokens_per_layer:
+            fallback = _fallback_result(
+                layer_name=target.name,
+                token_count=token_count,
+                min_tokens_per_layer=min_tokens_per_layer,
+                fallback_weight_format=fallback_weight_format,
+                fallback_activation_format=fallback_activation_format,
+                fallback_rotation=fallback_rotation,
+            )
+            if fallback is not None:
+                results.append(fallback)
+            continue
+
         gram = load_layer_gram(calibration_dir, target.name)
         inputs = load_layer_input(calibration_dir, target.name)
         if require_calibration and gram is None and inputs is None:
@@ -63,6 +89,37 @@ def optimize_layers(
         )
         results.append(result)
     return results
+
+
+def _fallback_result(
+    *,
+    layer_name: str,
+    token_count: int,
+    min_tokens_per_layer: int,
+    fallback_weight_format: str | None,
+    fallback_activation_format: str | None,
+    fallback_rotation: str | None,
+) -> LayerOptimizationResult | None:
+    if fallback_weight_format is None:
+        return None
+
+    enabled = fallback_weight_format != "none"
+    return LayerOptimizationResult(
+        layer_name=layer_name,
+        spec=LayerQuantizationSpec(
+            weight_format=None if fallback_weight_format == "none" else fallback_weight_format,
+            activation_format=fallback_activation_format,
+            rotation=fallback_rotation,
+            enabled=enabled,
+        ),
+        metrics={
+            "method": "fallback",
+            "reason": "insufficient_calibration_tokens",
+            "token_count": token_count,
+            "min_tokens_per_layer": min_tokens_per_layer,
+            "fallback_weight_format": fallback_weight_format,
+        },
+    )
 
 
 def build_plan_from_results(
