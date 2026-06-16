@@ -60,8 +60,15 @@ def parse_args() -> argparse.Namespace:
         default=[128, 512, 1024],
         help="Token-count thresholds summarized in the figure.",
     )
-    parser.add_argument("--title", default="Qwen3-MoE Calibration Expert Coverage")
     parser.add_argument("--cmap", default="magma", help="Matplotlib colormap for the heatmap.")
+    parser.add_argument(
+        "--figsize",
+        type=float,
+        nargs=2,
+        default=[3.6, 2.0],
+        metavar=("WIDTH", "HEIGHT"),
+        help="Figure size in inches. Default is 3:2 and fits roughly 0.5 text width in ICLR style.",
+    )
     return parser.parse_args()
 
 
@@ -75,8 +82,8 @@ def main() -> None:
         stats=stats,
         metadata=metadata,
         thresholds=args.thresholds,
-        title=args.title,
         cmap=args.cmap,
+        figsize=tuple(args.figsize),
         pdf_output=args.output,
         png_output=png_output,
     )
@@ -159,8 +166,8 @@ def plot_expert_token_stats(
     stats: ExpertTokenStats,
     metadata: dict[str, Any],
     thresholds: list[int],
-    title: str,
     cmap: str,
+    figsize: tuple[float, float],
     pdf_output: Path,
     png_output: Path,
 ) -> None:
@@ -168,14 +175,15 @@ def plot_expert_token_stats(
     try:
         import matplotlib.pyplot as plt
         from matplotlib.colors import LogNorm
+        from matplotlib.ticker import MaxNLocator
     except ImportError as exc:
         raise RuntimeError("Plotting requires matplotlib. Install it with `pip install matplotlib`.") from exc
 
     values = stats.counts
     flattened = flatten(values)
-    summary = summarize_counts(flattened, thresholds=thresholds)
-    layer_min, layer_p10, layer_median = layer_summaries(values)
-    expert_mean, expert_min = expert_summaries(values)
+    del metadata, thresholds
+    layer_median = layer_summaries(values)
+    expert_median = expert_summaries(values)
     positive_values = [value for value in flattened if value > 0]
     vmax = max(flattened) if flattened else 1
     vmin = max(1, min(positive_values) if positive_values else 1)
@@ -184,76 +192,66 @@ def plot_expert_token_stats(
     with plt.rc_context(
         {
             "font.size": 9,
-            "axes.labelsize": 10,
-            "axes.titlesize": 11,
+            "axes.labelsize": 12,
+            "axes.titlesize": 9,
             "xtick.labelsize": 8,
             "ytick.labelsize": 8,
-            "legend.fontsize": 8,
-            "lines.linewidth": 1.6,
+            "legend.fontsize": 9,
+            "lines.linewidth": 1.4,
             "axes.linewidth": 0.8,
             "pdf.fonttype": 42,
             "ps.fonttype": 42,
         }
     ):
-        fig = plt.figure(figsize=(7.0, 4.8), constrained_layout=True)
+        fig = plt.figure(figsize=figsize, constrained_layout=True)
         grid = fig.add_gridspec(
             nrows=2,
-            ncols=3,
-            width_ratios=[5.4, 0.18, 1.55],
-            height_ratios=[4.0, 1.25],
+            ncols=2,
+            width_ratios=[3.6, 1.0],
+            height_ratios=[2.25, 0.95],
         )
         ax_heatmap = fig.add_subplot(grid[0, 0])
-        ax_colorbar = fig.add_subplot(grid[0, 1])
-        ax_layer = fig.add_subplot(grid[0, 2])
+        ax_layer = fig.add_subplot(grid[0, 1])
         ax_expert = fig.add_subplot(grid[1, 0], sharex=ax_heatmap)
-        ax_text = fig.add_subplot(grid[1, 2])
+        ax_legend = fig.add_subplot(grid[1, 1])
 
         plot_values = [[max(value, 1) for value in row] for row in values]
         image = ax_heatmap.imshow(plot_values, aspect="auto", interpolation="nearest", cmap=cmap, norm=norm)
-        colorbar = fig.colorbar(image, cax=ax_colorbar)
-        colorbar.set_label("Tokens (log)")
+        colorbar = fig.colorbar(image, ax=ax_heatmap, fraction=0.035, pad=0.02)
+        colorbar.set_label("Tokens")
 
-        ax_heatmap.set_title(title, pad=8)
         ax_heatmap.set_ylabel("Layer")
-        ax_heatmap.set_xlabel("Expert index")
-        ax_heatmap.set_xticks(tick_positions(len(stats.expert_indices), step=16))
+        ax_heatmap.set_xlabel("Expert")
+        ax_heatmap.set_xticks(tick_positions(len(stats.expert_indices), step=32))
         ax_heatmap.set_yticks(tick_positions(len(stats.layer_indices), step=8))
         ax_heatmap.tick_params(axis="x", labelbottom=False)
         ax_heatmap.grid(False)
 
         y_positions = list(range(len(stats.layer_indices)))
         ax_layer.plot(layer_median, y_positions, color="#4C78A8", label="median")
-        ax_layer.plot(layer_p10, y_positions, color="#F58518", linestyle="--", label="p10")
-        ax_layer.plot(layer_min, y_positions, color="#777777", linestyle=":", label="min")
         ax_layer.invert_yaxis()
         ax_layer.set_xlabel("Tokens")
-        ax_layer.set_title("Per-layer")
+        ax_layer.set_xlim(left=0)
+        ax_layer.set_xticks([0, nice_upper_tick(layer_median)])
+        ax_layer.tick_params(axis="x", labelsize=7)
         ax_layer.grid(axis="x", color="#D8D8D8", linewidth=0.7, alpha=0.8)
-        ax_layer.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=3)
 
         x_positions = list(range(len(stats.expert_indices)))
-        ax_expert.plot(x_positions, expert_mean, color="#4C78A8", label="mean")
-        ax_expert.plot(x_positions, expert_min, color="#777777", linestyle=":", label="min")
+        ax_expert.plot(x_positions, expert_median, color="#4C78A8", label="median")
         ax_expert.set_ylabel("Tokens")
-        ax_expert.set_xlabel("Expert index")
-        ax_expert.set_xticks(tick_positions(len(stats.expert_indices), step=16))
+        ax_expert.set_xlabel("Expert")
+        ax_expert.set_xticks(tick_positions(len(stats.expert_indices), step=32))
+        ax_expert.yaxis.set_major_locator(MaxNLocator(nbins=3))
         ax_expert.grid(axis="y", color="#D8D8D8", linewidth=0.7, alpha=0.8)
-        ax_expert.legend(frameon=False, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 1.28))
 
-        ax_text.axis("off")
-        ax_text.text(
-            0.0,
-            1.0,
-            summary_text(
-                metadata=metadata,
-                stats=stats,
-                summary=summary,
-                thresholds=thresholds,
-            ),
-            ha="left",
-            va="top",
-            linespacing=1.35,
-            transform=ax_text.transAxes,
+        ax_legend.axis("off")
+        handles, labels = ax_expert.get_legend_handles_labels()
+        ax_legend.legend(
+            handles,
+            labels,
+            frameon=False,
+            loc="center left",
+            handlelength=2.2,
         )
 
         for axis in (ax_heatmap, ax_layer, ax_expert):
@@ -267,20 +265,16 @@ def plot_expert_token_stats(
         plt.close(fig)
 
 
-def layer_summaries(values: list[list[int]]) -> tuple[list[float], list[float], list[float]]:
-    layer_min = []
-    layer_p10 = []
+def layer_summaries(values: list[list[int]]) -> list[float]:
     layer_median = []
     for row in values:
-        layer_min.append(float(min(row)))
-        layer_p10.append(percentile(row, 10.0))
         layer_median.append(float(median(row)))
-    return layer_min, layer_p10, layer_median
+    return layer_median
 
 
-def expert_summaries(values: list[list[int]]) -> tuple[list[float], list[float]]:
+def expert_summaries(values: list[list[int]]) -> list[float]:
     columns = transpose(values)
-    return [float(mean(column)) for column in columns], [float(min(column)) for column in columns]
+    return [float(median(column)) for column in columns]
 
 
 def summarize_counts(values: list[int], *, thresholds: list[int]) -> dict[str, float]:
@@ -300,31 +294,6 @@ def summarize_counts(values: list[int], *, thresholds: list[int]) -> dict[str, f
     return summary
 
 
-def summary_text(
-    *,
-    metadata: dict[str, Any],
-    stats: ExpertTokenStats,
-    summary: dict[str, float],
-    thresholds: list[int],
-) -> str:
-    nsamples = metadata.get("nsamples", "?")
-    batch_size = metadata.get("batch_size", "?")
-    sequence_length = metadata.get("sequence_length", "?")
-    lines = [
-        f"Projection: {stats.projection}",
-        f"Layers x experts: {len(stats.layer_indices)} x {len(stats.expert_indices)}",
-        f"Samples: {nsamples}, batch: {batch_size}, seq: {sequence_length}",
-        "",
-        f"min / p5 / median: {summary['min']:.0f} / {summary['p5']:.0f} / {summary['median']:.0f}",
-        f"mean / max: {summary['mean']:.1f} / {summary['max']:.0f}",
-    ]
-    total = summary["total"]
-    for threshold in thresholds:
-        below = summary[f"below_{threshold}"]
-        lines.append(f"< {threshold}: {below:.0f} ({100.0 * below / total:.1f}%)")
-    return "\n".join(lines)
-
-
 def tick_positions(length: int, *, step: int) -> list[int]:
     if length <= 0:
         return []
@@ -333,6 +302,19 @@ def tick_positions(length: int, *, step: int) -> list[int]:
     if ticks[-1] != last:
         ticks.append(last)
     return ticks
+
+
+def nice_upper_tick(values: list[float]) -> float:
+    upper = max(values) if values else 1.0
+    if upper <= 0:
+        return 1.0
+    exponent = math.floor(math.log10(upper))
+    base = 10**exponent
+    for multiplier in (1, 2, 5, 10):
+        candidate = multiplier * base
+        if candidate >= upper:
+            return float(candidate)
+    return float(10 * base)
 
 
 def flatten(values: list[list[int]]) -> list[int]:
