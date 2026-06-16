@@ -303,7 +303,7 @@ generic
 ```
 
 For `auto`, SepQuant reads `model.config.model_type` and falls back to `generic` if the model family is unknown.
-For Qwen3-MoE models such as Qwen3-30B-A3B, `auto` resolves Hugging Face `qwen3_moe` configs and patches attention projections, dense `Qwen3MoeMLP` projections, and parameter-backed sparse expert `gate_up_proj`/`down_proj` views. Router weights such as `mlp.gate.weight` are intentionally left in floating point. Sparse expert targets are named like `model.layers.1.mlp.experts.3.gate_up_proj` in calibration metadata and quantization plans.
+For Qwen3-MoE models such as Qwen3-30B-A3B, `auto` resolves Hugging Face `qwen3_moe` configs and patches attention projections, dense `Qwen3MoeMLP` projections, and parameter-backed sparse expert `gate_up_proj`/`down_proj` views. Router weights such as `mlp.gate.weight` are intentionally left in floating point. Sparse expert targets are named like `model.layers.1.mlp.experts.3.gate_up_proj` in calibration metadata and quantization plans. Sparse expert activation quantization is applied inside the fused expert forward before `gate_up_proj` and before `down_proj`; block-Hadamard rotation remains limited to regular `QuantLinear` layers.
 
 ## Quantization Plans
 

@@ -5,6 +5,7 @@ from typing import Literal
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 from sepquant.formats import FP4Format, get_fp4_format
 from sepquant.models.quant_linear import QuantLinear
@@ -150,6 +151,13 @@ def patch_causal_lm_linears(
             if layer_rotation != "none":
                 skipped.append(name)
                 continue
+            if layer_activation_format is not None:
+                _configure_qwen3_moe_expert_activation(
+                    module.experts,
+                    expert_idx=module.expert_idx,
+                    projection=module.projection,
+                    activation_format=layer_activation_format,
+                )
             if not prequantized_weight:
                 with torch.no_grad():
                     module.weight.copy_(layer_weight_format.quantize(module.weight.detach()))
@@ -270,6 +278,76 @@ def _get_qwen3_moe_expert_targets(owner_name: str, experts: nn.Module) -> list[T
                 )
             )
     return targets
+
+
+def _configure_qwen3_moe_expert_activation(
+    experts: nn.Module,
+    *,
+    expert_idx: int,
+    projection: Literal["gate_up_proj", "down_proj"],
+    activation_format: FP4Format,
+) -> None:
+    gate_up_formats = getattr(experts, "_sepquant_gate_up_activation_formats", None)
+    if not isinstance(gate_up_formats, dict):
+        gate_up_formats = {}
+        setattr(experts, "_sepquant_gate_up_activation_formats", gate_up_formats)
+
+    down_formats = getattr(experts, "_sepquant_down_activation_formats", None)
+    if not isinstance(down_formats, dict):
+        down_formats = {}
+        setattr(experts, "_sepquant_down_activation_formats", down_formats)
+
+    if projection == "gate_up_proj":
+        gate_up_formats[expert_idx] = activation_format
+    elif projection == "down_proj":
+        down_formats[expert_idx] = activation_format
+    else:
+        raise ValueError(f"Unsupported Qwen3-MoE expert projection: {projection}")
+
+    if not getattr(experts, "_sepquant_activation_forward_installed", False):
+        setattr(experts, "_sepquant_original_forward", experts.forward)
+        experts.forward = _qwen3_moe_experts_activation_forward.__get__(experts, experts.__class__)
+        setattr(experts, "_sepquant_activation_forward_installed", True)
+
+
+def _qwen3_moe_experts_activation_forward(
+    self: nn.Module,
+    hidden_states: torch.Tensor,
+    top_k_index: torch.Tensor,
+    top_k_weights: torch.Tensor,
+) -> torch.Tensor:
+    final_hidden_states = torch.zeros_like(hidden_states)
+    with torch.no_grad():
+        expert_mask = torch.nn.functional.one_hot(top_k_index, num_classes=self.num_experts)
+        expert_mask = expert_mask.permute(2, 1, 0)
+        expert_hit = torch.greater(expert_mask.sum(dim=(-1, -2)), 0).nonzero()
+
+    gate_up_formats = getattr(self, "_sepquant_gate_up_activation_formats", {})
+    down_formats = getattr(self, "_sepquant_down_activation_formats", {})
+
+    for expert_idx_tensor in expert_hit:
+        expert_idx = int(expert_idx_tensor[0].item())
+        if expert_idx == self.num_experts:
+            continue
+
+        top_k_pos, token_idx = torch.where(expert_mask[expert_idx])
+        current_state = hidden_states[token_idx]
+        gate_up_format = gate_up_formats.get(expert_idx)
+        if gate_up_format is not None:
+            current_state = gate_up_format.quantize(current_state)
+
+        gate, up = F.linear(current_state, self.gate_up_proj[expert_idx]).chunk(2, dim=-1)
+        current_hidden_states = self.act_fn(gate) * up
+
+        down_format = down_formats.get(expert_idx)
+        if down_format is not None:
+            current_hidden_states = down_format.quantize(current_hidden_states)
+
+        current_hidden_states = F.linear(current_hidden_states, self.down_proj[expert_idx])
+        current_hidden_states = current_hidden_states * top_k_weights[token_idx, top_k_pos, None]
+        final_hidden_states.index_add_(0, token_idx, current_hidden_states.to(final_hidden_states.dtype))
+
+    return final_hidden_states
 
 
 def _resolve_layer_formats(

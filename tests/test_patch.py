@@ -7,6 +7,18 @@ from sepquant.models import QuantLinear, get_target_linears, patch_causal_lm_lin
 from sepquant.quantization import QuantizationPlan
 
 
+class CountingFormat:
+    name = "counting"
+    block_size = 1
+
+    def __init__(self) -> None:
+        self.input_shapes: list[tuple[int, ...]] = []
+
+    def quantize(self, tensor: torch.Tensor) -> torch.Tensor:
+        self.input_shapes.append(tuple(tensor.shape))
+        return tensor
+
+
 class TinyQwenBlock(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -166,6 +178,26 @@ def test_collect_qwen3_moe_expert_calibration_counts_routed_tokens() -> None:
     assert capture.token_counts["mlp.experts.1.down_proj"] == 2
     assert capture.grams["mlp.experts.0.gate_up_proj"].shape == (8, 8)
     assert capture.grams["mlp.experts.0.down_proj"].shape == (16, 16)
+
+
+def test_patch_qwen3_moe_sparse_experts_quantizes_activations() -> None:
+    model = TinyQwen3MoeBlock()
+    activation_format = CountingFormat()
+
+    patch_causal_lm_linears(
+        model,
+        weight_format=get_fp4_format("mxfp4"),
+        activation_format=activation_format,
+        model_type="auto",
+    )
+    model(torch.randn(4, 8))
+
+    assert sorted(activation_format.input_shapes) == [
+        (2, 8),
+        (2, 8),
+        (2, 16),
+        (2, 16),
+    ]
 
 
 def test_patch_qwen3_moe_dense_mlp_linears() -> None:
