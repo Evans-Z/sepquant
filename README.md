@@ -452,6 +452,16 @@ outputs/calib/qwen3_wikitext2/
     <escaped-layer-name>.pt
 ```
 
+Plot Qwen3-MoE routed-token coverage after calibration:
+
+```bash
+scripts/plot_moe_expert_tokens.py \
+  --metadata outputs/calib/qwen3_moe_wikitext2/metadata.json \
+  --output docs/figures/qwen3_moe_expert_tokens.pdf
+```
+
+The plot writes both PDF and PNG. It visualizes sparse expert `gate_up_proj` token counts as a layer-by-expert heatmap, plus per-layer and per-expert summaries.
+
 ## Research Method: Weight Format Search
 
 The first research-level method is **accuracy-first per-layer weight format search**.
