@@ -200,6 +200,36 @@ def test_patch_qwen3_moe_sparse_experts_quantizes_activations() -> None:
     ]
 
 
+def test_patch_qwen3_moe_sparse_experts_can_override_plan_activation() -> None:
+    model = TinyQwen3MoeBlock()
+    activation_format = CountingFormat()
+    plan = QuantizationPlan.from_dict(
+        {
+            "default": {
+                "weight_format": "mxfp4",
+                "activation_format": "none",
+            }
+        }
+    )
+
+    patch_causal_lm_linears(
+        model,
+        weight_format=None,
+        activation_format=activation_format,
+        model_type="auto",
+        quantization_plan=plan,
+        override_plan_activation_format=True,
+    )
+    model(torch.randn(4, 8))
+
+    assert sorted(activation_format.input_shapes) == [
+        (2, 8),
+        (2, 8),
+        (2, 16),
+        (2, 16),
+    ]
+
+
 def test_patch_qwen3_moe_dense_mlp_linears() -> None:
     model = TinyQwen3MoeDenseMlpBlock()
     resolved_model_type, targets = get_target_linears(model, model_type="auto", include_lm_head=False)

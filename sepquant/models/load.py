@@ -74,6 +74,7 @@ def load_quantized_causal_lm(
                 quantization_plan=plan,
                 prequantized_weight=True,
                 rotation=rotation,
+                override_plan_activation_format=activation_format != "none",
             )
         return LoadedCausalLM(model=model, tokenizer=tokenizer, patch_report=patch_report)
 
@@ -86,6 +87,7 @@ def load_quantized_causal_lm(
             include_lm_head=include_lm_head,
             quantization_plan=plan,
             rotation=rotation,
+            override_plan_activation_format=activation_format != "none",
         )
 
     return LoadedCausalLM(model=model, tokenizer=tokenizer, patch_report=patch_report)

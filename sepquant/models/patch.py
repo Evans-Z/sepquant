@@ -120,6 +120,7 @@ def patch_causal_lm_linears(
     quantization_plan: QuantizationPlan | None = None,
     prequantized_weight: bool = False,
     rotation: str = "none",
+    override_plan_activation_format: bool = False,
 ) -> PatchReport:
     """Replace supported causal LM linear projections with `QuantLinear`."""
 
@@ -144,6 +145,7 @@ def patch_causal_lm_linears(
                 fallback_activation_format=activation_format,
                 fallback_rotation=rotation,
                 quantization_plan=quantization_plan,
+                override_plan_activation_format=override_plan_activation_format,
             )
             if layer_weight_format is None:
                 skipped.append(name)
@@ -175,6 +177,7 @@ def patch_causal_lm_linears(
             fallback_activation_format=activation_format,
             fallback_rotation=rotation,
             quantization_plan=quantization_plan,
+            override_plan_activation_format=override_plan_activation_format,
         )
         if layer_weight_format is None:
             skipped.append(name)
@@ -357,6 +360,7 @@ def _resolve_layer_formats(
     fallback_activation_format: FP4Format | None,
     fallback_rotation: str,
     quantization_plan: QuantizationPlan | None,
+    override_plan_activation_format: bool = False,
 ) -> tuple[FP4Format | None, FP4Format | None, str]:
     if quantization_plan is None:
         return fallback_weight_format, fallback_activation_format, fallback_rotation
@@ -372,10 +376,14 @@ def _resolve_layer_formats(
         field_name="weight_format",
         fallback=fallback_weight_format,
     )
-    activation_format = _format_from_spec(
-        spec=spec,
-        field_name="activation_format",
-        fallback=fallback_activation_format,
+    activation_format = (
+        fallback_activation_format
+        if override_plan_activation_format and fallback_activation_format is not None
+        else _format_from_spec(
+            spec=spec,
+            field_name="activation_format",
+            fallback=fallback_activation_format,
+        )
     )
     rotation = spec.rotation if spec.rotation is not None else fallback_rotation
     return weight_format, activation_format, rotation
