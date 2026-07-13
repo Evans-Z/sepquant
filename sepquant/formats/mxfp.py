@@ -70,14 +70,14 @@ class MXFP4PlusFormat:
 
     def _block_scale(self, grouped: torch.Tensor) -> torch.Tensor:
         raw_scale = raw_e2m1_block_scale(grouped, self.eps)
-        macro_scale = _e0m8_macro_scale_from_raw(raw_scale)
-        relative_raw_scale = torch.clamp(raw_scale / macro_scale, min=self.eps)
+        mbs_factor = _e0m8_macro_scale_from_raw(raw_scale)
+        mbs_scaled_raw_scale = torch.clamp(raw_scale * mbs_factor, min=self.eps)
         block_scale = _e8m0_scale_from_raw(
-            relative_raw_scale,
+            mbs_scaled_raw_scale,
             min_exponent=self.min_scale_exponent,
             max_exponent=self.max_scale_exponent,
         )
-        return torch.clamp(macro_scale * block_scale, min=self.eps)
+        return torch.clamp(block_scale / mbs_factor, min=self.eps)
 
 
 @dataclass(frozen=True)
@@ -111,14 +111,14 @@ class MXFP4PlusScaleSearchFormat:
                 min=0,
                 max=E0M8_MAX_CODE,
             )
-            macro_scale = _e0m8_macro_scale_from_code(macro_scale_code, dtype=raw_scale.dtype)
-            relative_raw_scale = torch.clamp(raw_scale / macro_scale, min=self.eps)
+            mbs_factor = _e0m8_macro_scale_from_code(macro_scale_code, dtype=raw_scale.dtype)
+            mbs_scaled_raw_scale = torch.clamp(raw_scale * mbs_factor, min=self.eps)
             block_scale = _e8m0_scale_from_raw(
-                relative_raw_scale,
+                mbs_scaled_raw_scale,
                 min_exponent=self.min_scale_exponent,
                 max_exponent=self.max_scale_exponent,
             )
-            scale = torch.clamp(macro_scale * block_scale, min=self.eps)
+            scale = torch.clamp(block_scale / mbs_factor, min=self.eps)
             quantized = quantize_e2m1(grouped / scale) * scale
             scores = torch.sum((grouped - quantized).square(), dim=(-1, -2))
             if best_scores is None or best_quantized is None:
@@ -228,9 +228,10 @@ def _e0m8_macro_scale_from_raw(raw_scale: torch.Tensor) -> torch.Tensor:
 
 def _e0m8_macro_scale_code_from_raw(raw_scale: torch.Tensor) -> torch.Tensor:
     macro_raw_scale = torch.clamp(raw_scale.amax(dim=1, keepdim=True), min=1e-12)
-    exponent = torch.floor(torch.log2(macro_raw_scale))
-    mantissa = macro_raw_scale / torch.pow(2.0, exponent)
-    return torch.round((mantissa - 1.0) * E0M8_LEVELS).long().clamp(min=0, max=E0M8_MAX_CODE)
+    reciprocal_scale = torch.reciprocal(macro_raw_scale)
+    exponent = torch.floor(torch.log2(reciprocal_scale))
+    mantissa = reciprocal_scale / torch.pow(2.0, exponent)
+    return torch.floor((mantissa - 1.0) * E0M8_LEVELS).long().clamp(min=0, max=E0M8_MAX_CODE)
 
 
 def _e0m8_macro_scale_from_code(code: torch.Tensor, *, dtype: torch.dtype) -> torch.Tensor:

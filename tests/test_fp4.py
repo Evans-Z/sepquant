@@ -11,6 +11,7 @@ from sepquant.formats import (
     NVFP4ScaleSearchFormat,
     get_fp4_format,
 )
+from sepquant.formats.mxfp import _e0m8_macro_scale_code_from_raw
 
 
 def test_mxfp4_quantize_preserves_shape() -> None:
@@ -45,6 +46,14 @@ def test_mxfp4_plus_alias_and_zeros() -> None:
 
     assert torch.equal(quantized, tensor)
     assert isinstance(fmt, MXFP4PlusFormat)
+
+
+def test_mxfp4_plus_mbs_code_uses_reciprocal_scale_truncation() -> None:
+    raw_scale = torch.full((1, 8, 1), 1.0 / 1.5)
+
+    code = _e0m8_macro_scale_code_from_raw(raw_scale)
+
+    assert code.item() == 128
 
 
 def test_mxfp4_plus_search_quantizes_macro_blocks() -> None:

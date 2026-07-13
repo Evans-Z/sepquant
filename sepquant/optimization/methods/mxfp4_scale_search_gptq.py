@@ -780,14 +780,14 @@ def _quantize_mxfp4_plus_macro_with_code_offset(
         min=0,
         max=E0M8_MAX_CODE,
     )
-    macro_scale = _e0m8_macro_scale_from_code(
+    mbs_factor = _e0m8_macro_scale_from_code(
         macro_scale_code.reshape(weight_macro_block.shape[0], 1, 1),
         dtype=weight_macro_block.dtype,
     )
     raw_scale = raw_e2m1_block_scale(grouped, eps)
-    relative_raw_scale = torch.clamp(raw_scale / macro_scale, min=eps)
-    block_scale = torch.pow(2.0, torch.clamp(torch.ceil(torch.log2(relative_raw_scale)), min=-127, max=127))
-    scale = torch.clamp(macro_scale * block_scale, min=eps)
+    mbs_scaled_raw_scale = torch.clamp(raw_scale * mbs_factor, min=eps)
+    block_scale = torch.pow(2.0, torch.clamp(torch.ceil(torch.log2(mbs_scaled_raw_scale)), min=-127, max=127))
+    scale = torch.clamp(block_scale / mbs_factor, min=eps)
     return (quantize_e2m1(grouped / scale) * scale).reshape(weight_macro_block.shape)
 
 
