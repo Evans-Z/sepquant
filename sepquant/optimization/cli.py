@@ -16,10 +16,12 @@ from sepquant.optimization.methods import build_layer_optimizer
 from sepquant.quantization import QuantizationPlan
 
 
-WEIGHT_FORMAT_CHOICES = ["mxfp4", "nvfp4", "hif4"]
+WEIGHT_FORMAT_CHOICES = ["mxfp4", "mxfp4_plus", "nvfp4", "hif4"]
 FALLBACK_WEIGHT_FORMAT_CHOICES = [
     "none",
     "mxfp4",
+    "mxfp4_plus",
+    "mxfp4_plus_search",
     "mxfp4_search",
     "nvfp4",
     "nvfp4_search",
@@ -63,10 +65,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--activation-format",
         default="none",
-        choices=["none", "mxfp4", "mxfp4_search", "nvfp4", "nvfp4_search", "hif4", "hif4_search"],
+        choices=[
+            "none",
+            "mxfp4",
+            "mxfp4_plus",
+            "mxfp4_plus_search",
+            "mxfp4_search",
+            "nvfp4",
+            "nvfp4_search",
+            "hif4",
+            "hif4_search",
+        ],
     )
     parser.add_argument("--gptq-damp-percent", type=float, default=0.01)
     parser.add_argument("--mxfp4-scale-offsets", nargs="+", type=int, default=[-2, -1, 0, 1, 2])
+    parser.add_argument(
+        "--mxfp4-plus-macro-scale-code-offsets",
+        nargs="+",
+        type=int,
+        default=[-8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8],
+    )
     parser.add_argument("--mxfp4-scale-objective", default="block", choices=["identity", "diag", "block"])
     parser.add_argument(
         "--nvfp4-scale-code-offsets",
@@ -101,6 +119,12 @@ def parse_args() -> argparse.Namespace:
     if isinstance(args.mxfp4_scale_offsets, str):
         args.mxfp4_scale_offsets = [
             int(item.strip()) for item in args.mxfp4_scale_offsets.split(",") if item.strip()
+        ]
+    if isinstance(args.mxfp4_plus_macro_scale_code_offsets, str):
+        args.mxfp4_plus_macro_scale_code_offsets = [
+            int(item.strip())
+            for item in args.mxfp4_plus_macro_scale_code_offsets.split(",")
+            if item.strip()
         ]
     if isinstance(args.nvfp4_scale_code_offsets, str):
         args.nvfp4_scale_code_offsets = [
@@ -140,6 +164,7 @@ def main() -> None:
         weight_format=args.weight_format,
         gptq_damp_percent=args.gptq_damp_percent,
         mxfp4_scale_offsets=args.mxfp4_scale_offsets,
+        mxfp4_plus_macro_scale_code_offsets=args.mxfp4_plus_macro_scale_code_offsets,
         mxfp4_scale_objective=args.mxfp4_scale_objective,
         nvfp4_scale_code_offsets=args.nvfp4_scale_code_offsets,
         hif4_level1_code_offsets=args.hif4_level1_code_offsets,
@@ -169,6 +194,7 @@ def main() -> None:
             "activation_format": args.activation_format,
             "gptq_damp_percent": args.gptq_damp_percent,
             "mxfp4_scale_offsets": args.mxfp4_scale_offsets,
+            "mxfp4_plus_macro_scale_code_offsets": args.mxfp4_plus_macro_scale_code_offsets,
             "mxfp4_scale_objective": args.mxfp4_scale_objective,
             "nvfp4_scale_code_offsets": args.nvfp4_scale_code_offsets,
             "hif4_level1_code_offsets": args.hif4_level1_code_offsets,

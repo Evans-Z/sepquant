@@ -8,6 +8,7 @@ from sepquant.optimization.methods.hif4_scale_search_gptq import (
 from sepquant.optimization.methods.mxfp4_scale_search import MXFP4HessianScaleSearchOptimizer
 from sepquant.optimization.methods.mxfp4_scale_search_gptq import (
     MXFP4DynamicScaleSearchGPTQOptimizer,
+    MXFP4PlusDynamicScaleSearchGPTQOptimizer,
     MXFP4RotationSelectGPTQOptimizer,
     MXFP4ScaleSearchGPTQOptimizer,
 )
@@ -26,6 +27,7 @@ def build_layer_optimizer(
     weight_format: str = "mxfp4",
     gptq_damp_percent: float = 0.01,
     mxfp4_scale_offsets: list[int] | None = None,
+    mxfp4_plus_macro_scale_code_offsets: list[int] | None = None,
     mxfp4_scale_objective: str = "block",
     nvfp4_scale_code_offsets: list[int] | None = None,
     hif4_level1_code_offsets: list[int] | None = None,
@@ -74,6 +76,18 @@ def build_layer_optimizer(
             activation_format=activation_format,
             damp_percent=gptq_damp_percent,
             exponent_offsets=mxfp4_scale_offsets or [-2, -1, 0, 1, 2],
+            scale_objective=mxfp4_scale_objective,
+            rotation=rotation,
+            device=device,
+        )
+    if method == "mxfp4_plus_dynamic_scale_search_gptq":
+        if weight_format != "mxfp4_plus":
+            raise ValueError("mxfp4_plus_dynamic_scale_search_gptq only supports weight_format='mxfp4_plus'")
+        return MXFP4PlusDynamicScaleSearchGPTQOptimizer(
+            activation_format=activation_format,
+            damp_percent=gptq_damp_percent,
+            macro_scale_code_offsets=mxfp4_plus_macro_scale_code_offsets
+            or [-8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8],
             scale_objective=mxfp4_scale_objective,
             rotation=rotation,
             device=device,
@@ -161,6 +175,7 @@ __all__ = [
     "HIF4ScaleSearchGPTQOptimizer",
     "MXFP4DynamicScaleSearchGPTQOptimizer",
     "MXFP4HessianScaleSearchOptimizer",
+    "MXFP4PlusDynamicScaleSearchGPTQOptimizer",
     "MXFP4RotationSelectGPTQOptimizer",
     "MXFP4ScaleSearchGPTQOptimizer",
     "NVFP4DynamicScaleSearchGPTQOptimizer",

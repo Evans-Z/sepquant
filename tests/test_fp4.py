@@ -4,6 +4,8 @@ from sepquant.formats import (
     HIF4Format,
     HIF4ScaleSearchFormat,
     MXFP4Format,
+    MXFP4PlusFormat,
+    MXFP4PlusScaleSearchFormat,
     MXFP4ScaleSearchFormat,
     NVFP4Format,
     NVFP4ScaleSearchFormat,
@@ -20,6 +22,54 @@ def test_mxfp4_quantize_preserves_shape() -> None:
     assert quantized.shape == tensor.shape
     assert torch.isfinite(quantized).all()
     assert isinstance(fmt, MXFP4Format)
+
+
+def test_mxfp4_plus_uses_macro_and_block_scales() -> None:
+    fmt = get_fp4_format("mxfp4_plus")
+    tensor = torch.randn(2, 3, 129)
+
+    quantized = fmt.quantize(tensor)
+
+    assert quantized.shape == tensor.shape
+    assert torch.isfinite(quantized).all()
+    assert isinstance(fmt, MXFP4PlusFormat)
+    assert fmt.block_size == 16
+    assert fmt.macro_block_size == 128
+
+
+def test_mxfp4_plus_alias_and_zeros() -> None:
+    fmt = get_fp4_format("mxfp4+")
+    tensor = torch.zeros(2, 129)
+
+    quantized = fmt.quantize(tensor)
+
+    assert torch.equal(quantized, tensor)
+    assert isinstance(fmt, MXFP4PlusFormat)
+
+
+def test_mxfp4_plus_search_quantizes_macro_blocks() -> None:
+    fmt = get_fp4_format("mxfp4_plus_search")
+    tensor = torch.randn(2, 3, 129)
+
+    quantized = fmt.quantize(tensor)
+
+    assert quantized.shape == tensor.shape
+    assert torch.isfinite(quantized).all()
+    assert isinstance(fmt, MXFP4PlusScaleSearchFormat)
+    assert fmt.block_size == 16
+    assert fmt.macro_block_size == 128
+
+
+def test_mxfp4_plus_search_is_no_worse_than_default_macro_scale() -> None:
+    torch.manual_seed(0)
+    tensor = torch.randn(4, 129)
+    default = get_fp4_format("mxfp4_plus").quantize(tensor)
+    searched = get_fp4_format("mxfp4+_search").quantize(tensor)
+
+    default_error = torch.sum((tensor - default).square())
+    searched_error = torch.sum((tensor - searched).square())
+
+    assert searched_error <= default_error
 
 
 def test_nvfp4_quantize_preserves_zeros() -> None:

@@ -31,11 +31,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=float, default=None)
     parser.add_argument("--batch-size", default="1")
     parser.add_argument("--max-length", type=int, default=None)
-    parser.add_argument("--weight-format", default="mxfp4", choices=["none", "mxfp4", "nvfp4", "hif4"])
+    parser.add_argument("--weight-format", default="mxfp4", choices=["none", "mxfp4", "mxfp4_plus", "nvfp4", "hif4"])
     parser.add_argument(
         "--activation-format",
         default="none",
-        choices=["none", "mxfp4", "mxfp4_search", "nvfp4", "nvfp4_search", "hif4", "hif4_search"],
+        choices=[
+            "none",
+            "mxfp4",
+            "mxfp4_plus",
+            "mxfp4_plus_search",
+            "mxfp4_search",
+            "nvfp4",
+            "nvfp4_search",
+            "hif4",
+            "hif4_search",
+        ],
     )
     parser.add_argument("--quantization-plan", default=None)
     parser.add_argument("--pre-quant-model", "--pre-quantized-model", dest="pre_quant_model", default=None)
