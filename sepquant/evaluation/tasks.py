@@ -88,6 +88,11 @@ def parse_args() -> argparse.Namespace:
         help="Strip <think>...</think> blocks from generated text before lm-eval scoring.",
     )
     parser.add_argument(
+        "--extract-boxed-answer",
+        action="store_true",
+        help="Replace generated text with the last \\boxed{...} answer before lm-eval scoring.",
+    )
+    parser.add_argument(
         "--gen-kwargs",
         default=None,
         help='JSON object passed to lm-eval generation, e.g. \'{"max_gen_toks": 1024}\'.',
@@ -141,7 +146,17 @@ def main() -> None:
 
     if args.strip_thinking:
         print("Enabled stripping of <think>...</think> blocks before lm-eval scoring.")
-    hflm_cls = _with_thinking_stripper(HFLM) if args.strip_thinking else HFLM
+    if args.extract_boxed_answer:
+        print("Enabled extraction of the last \\boxed{...} answer before lm-eval scoring.")
+    hflm_cls = (
+        _with_response_filter(
+            HFLM,
+            strip_thinking=args.strip_thinking,
+            extract_boxed_answer=args.extract_boxed_answer,
+        )
+        if args.strip_thinking or args.extract_boxed_answer
+        else HFLM
+    )
     hflm_kwargs = _filter_supported_init_kwargs(
         hflm_cls,
         {
@@ -241,13 +256,20 @@ def _filter_supported_init_kwargs(cls, kwargs: dict[str, Any]) -> dict[str, Any]
     return filtered
 
 
-def _with_thinking_stripper(HFLM):
-    class ThinkingStrippedHFLM(HFLM):
+def _with_response_filter(HFLM, *, strip_thinking: bool, extract_boxed_answer: bool):
+    class ResponseFilteredHFLM(HFLM):
         def generate_until(self, *args, **kwargs):
             responses = super().generate_until(*args, **kwargs)
-            return [_strip_thinking_text(response) for response in responses]
+            filtered_responses = []
+            for response in responses:
+                if strip_thinking:
+                    response = _strip_thinking_text(response)
+                if extract_boxed_answer:
+                    response = _extract_last_boxed_answer(response)
+                filtered_responses.append(response)
+            return filtered_responses
 
-    return ThinkingStrippedHFLM
+    return ResponseFilteredHFLM
 
 
 _THINKING_BLOCK_RE = re.compile(r"<think\b[^>]*>.*?(?:</think>|<\\think>)", re.IGNORECASE | re.DOTALL)
@@ -264,6 +286,40 @@ def _strip_thinking_text(text: str) -> str:
         text = text[closing_matches[-1].end() :]
 
     return _UNCLOSED_THINKING_RE.sub("", text).strip()
+
+
+def _extract_last_boxed_answer(text: str) -> str:
+    starts = [match.start() for match in re.finditer(r"\\boxed\s*\{", text)]
+    for start in reversed(starts):
+        open_brace = text.find("{", start)
+        if open_brace == -1:
+            continue
+        close_brace = _find_matching_brace(text, open_brace)
+        if close_brace is not None:
+            return text[open_brace + 1 : close_brace].strip()
+    return text.strip()
+
+
+def _find_matching_brace(text: str, open_brace: int) -> int | None:
+    depth = 0
+    for index in range(open_brace, len(text)):
+        char = text[index]
+        if char == "{" and not _is_escaped(text, index):
+            depth += 1
+        elif char == "}" and not _is_escaped(text, index):
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
+def _is_escaped(text: str, index: int) -> bool:
+    backslashes = 0
+    cursor = index - 1
+    while cursor >= 0 and text[cursor] == "\\":
+        backslashes += 1
+        cursor -= 1
+    return backslashes % 2 == 1
 
 
 def _compact_results(results: dict[str, Any]) -> dict[str, Any]:
