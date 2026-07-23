@@ -58,6 +58,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--experiment-dir", type=Path, default=None)
     parser.add_argument("--log-samples", action="store_true")
     parser.add_argument(
+        "--apply-chat-template",
+        nargs="?",
+        const=True,
+        default=False,
+        help="Apply the tokenizer chat template before evaluation. Optionally pass a template name/string.",
+    )
+    parser.add_argument("--system-instruction", default=None)
+    parser.add_argument("--fewshot-as-multiturn", action="store_true")
+    parser.add_argument(
         "--strip-thinking",
         action="store_true",
         help="Strip <think>...</think> blocks from generated text before lm-eval scoring.",
@@ -124,6 +133,12 @@ def main() -> None:
     }
     if args.gen_kwargs is not None:
         evaluate_kwargs["gen_kwargs"] = args.gen_kwargs
+    if args.apply_chat_template:
+        evaluate_kwargs["apply_chat_template"] = args.apply_chat_template
+    if args.system_instruction is not None:
+        evaluate_kwargs["system_instruction"] = args.system_instruction
+    if args.fewshot_as_multiturn:
+        evaluate_kwargs["fewshot_as_multiturn"] = True
     results = evaluator.simple_evaluate(**evaluate_kwargs)
 
     if args.output_path is not None:
