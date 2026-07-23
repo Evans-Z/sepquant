@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +58,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--experiment-dir", type=Path, default=None)
     parser.add_argument("--log-samples", action="store_true")
     parser.add_argument(
+        "--strip-thinking",
+        action="store_true",
+        help="Strip <think>...</think> blocks from generated text before lm-eval scoring.",
+    )
+    parser.add_argument(
         "--gen-kwargs",
         default=None,
         help='JSON object passed to lm-eval generation, e.g. \'{"max_gen_toks": 1024}\'.',
@@ -101,7 +107,8 @@ def main() -> None:
             f"(model_type={loaded.patch_report.model_type})."
         )
 
-    lm = HFLM(
+    hflm_cls = _with_thinking_stripper(HFLM) if args.strip_thinking else HFLM
+    lm = hflm_cls(
         pretrained=loaded.model,
         tokenizer=loaded.tokenizer,
         batch_size=args.batch_size,
@@ -164,6 +171,31 @@ def _import_lm_eval():
 
 def _lm_eval_device(device: str) -> str:
     return str(resolve_device(device))
+
+
+def _with_thinking_stripper(HFLM):
+    class ThinkingStrippedHFLM(HFLM):
+        def generate_until(self, *args, **kwargs):
+            responses = super().generate_until(*args, **kwargs)
+            return [_strip_thinking_text(response) for response in responses]
+
+    return ThinkingStrippedHFLM
+
+
+_THINKING_BLOCK_RE = re.compile(r"<think\b[^>]*>.*?(?:</think>|<\\think>)", re.IGNORECASE | re.DOTALL)
+_THINKING_CLOSE_RE = re.compile(r"(?:</think>|<\\think>)", re.IGNORECASE)
+_UNCLOSED_THINKING_RE = re.compile(r"<think\b[^>]*>.*$", re.IGNORECASE | re.DOTALL)
+
+
+def _strip_thinking_text(text: str) -> str:
+    text = _THINKING_BLOCK_RE.sub("", text)
+
+    # Some model outputs only expose the closing thinking tag before the answer.
+    closing_matches = list(_THINKING_CLOSE_RE.finditer(text))
+    if closing_matches:
+        text = text[closing_matches[-1].end() :]
+
+    return _UNCLOSED_THINKING_RE.sub("", text).strip()
 
 
 def _compact_results(results: dict[str, Any]) -> dict[str, Any]:
