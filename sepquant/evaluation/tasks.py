@@ -56,6 +56,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-path", type=Path, default=None)
     parser.add_argument("--experiment-dir", type=Path, default=None)
     parser.add_argument("--log-samples", action="store_true")
+    parser.add_argument(
+        "--gen-kwargs",
+        default=None,
+        help='JSON object passed to lm-eval generation, e.g. \'{"max_gen_toks": 1024}\'.',
+    )
     parser.set_defaults(**config)
 
     args = parser.parse_args(remaining_argv)
@@ -67,6 +72,8 @@ def parse_args() -> argparse.Namespace:
         args.output_path = Path(args.output_path)
     if isinstance(args.experiment_dir, str):
         args.experiment_dir = Path(args.experiment_dir)
+    if isinstance(args.gen_kwargs, str):
+        args.gen_kwargs = _parse_json_object(args.gen_kwargs, "--gen-kwargs")
     return args
 
 
@@ -101,13 +108,16 @@ def main() -> None:
         max_length=args.max_length,
         device=_lm_eval_device(args.device),
     )
-    results = evaluator.simple_evaluate(
-        model=lm,
-        tasks=args.tasks,
-        num_fewshot=args.num_fewshot,
-        limit=args.limit,
-        log_samples=args.log_samples,
-    )
+    evaluate_kwargs = {
+        "model": lm,
+        "tasks": args.tasks,
+        "num_fewshot": args.num_fewshot,
+        "limit": args.limit,
+        "log_samples": args.log_samples,
+    }
+    if args.gen_kwargs is not None:
+        evaluate_kwargs["gen_kwargs"] = args.gen_kwargs
+    results = evaluator.simple_evaluate(**evaluate_kwargs)
 
     if args.output_path is not None:
         write_json(args.output_path, results)
@@ -175,6 +185,16 @@ def _load_config(path: Path) -> dict[str, Any]:
     if not isinstance(config, dict):
         raise ValueError(f"Config must contain a JSON object: {path}")
     return config
+
+
+def _parse_json_object(value: str, arg_name: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{arg_name} must be a JSON object: {value}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(f"{arg_name} must be a JSON object: {value}")
+    return parsed
 
 
 def _json_default(value: Any) -> Any:
