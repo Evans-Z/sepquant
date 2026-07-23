@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import re
 from pathlib import Path
@@ -64,6 +65,21 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help="Apply the tokenizer chat template before evaluation. Optionally pass a template name/string.",
     )
+    parser.add_argument(
+        "--chat-template-args",
+        default=None,
+        help='JSON object passed to tokenizer.apply_chat_template, e.g. \'{"enable_thinking": false}\'.',
+    )
+    parser.add_argument(
+        "--disable-thinking",
+        action="store_true",
+        help="Set enable_thinking=false for chat-template-capable thinking models such as Qwen3.",
+    )
+    parser.add_argument(
+        "--think-end-token",
+        default=None,
+        help="Token or token id marking the end of a thinking block for lm-eval/HFLM.",
+    )
     parser.add_argument("--system-instruction", default=None)
     parser.add_argument("--fewshot-as-multiturn", action="store_true")
     parser.add_argument(
@@ -89,6 +105,13 @@ def parse_args() -> argparse.Namespace:
         args.experiment_dir = Path(args.experiment_dir)
     if isinstance(args.gen_kwargs, str):
         args.gen_kwargs = _parse_json_object(args.gen_kwargs, "--gen-kwargs")
+    if isinstance(args.chat_template_args, str):
+        args.chat_template_args = _parse_json_object(args.chat_template_args, "--chat-template-args")
+    if args.disable_thinking:
+        args.chat_template_args = dict(args.chat_template_args or {})
+        args.chat_template_args["enable_thinking"] = False
+    if isinstance(args.think_end_token, str) and args.think_end_token.isdigit():
+        args.think_end_token = int(args.think_end_token)
     return args
 
 
@@ -116,14 +139,25 @@ def main() -> None:
             f"(model_type={loaded.patch_report.model_type})."
         )
 
+    if args.strip_thinking:
+        print("Enabled stripping of <think>...</think> blocks before lm-eval scoring.")
     hflm_cls = _with_thinking_stripper(HFLM) if args.strip_thinking else HFLM
-    lm = hflm_cls(
-        pretrained=loaded.model,
-        tokenizer=loaded.tokenizer,
-        batch_size=args.batch_size,
-        max_length=args.max_length,
-        device=_lm_eval_device(args.device),
+    hflm_kwargs = _filter_supported_init_kwargs(
+        hflm_cls,
+        {
+            "pretrained": loaded.model,
+            "tokenizer": loaded.tokenizer,
+            "batch_size": args.batch_size,
+            "max_length": args.max_length,
+            "device": _lm_eval_device(args.device),
+            "chat_template_args": args.chat_template_args,
+            "enable_thinking": args.chat_template_args.get("enable_thinking")
+            if isinstance(args.chat_template_args, dict)
+            else None,
+            "think_end_token": args.think_end_token,
+        },
     )
+    lm = hflm_cls(**hflm_kwargs)
     evaluate_kwargs = {
         "model": lm,
         "tasks": args.tasks,
@@ -135,6 +169,8 @@ def main() -> None:
         evaluate_kwargs["gen_kwargs"] = args.gen_kwargs
     if args.apply_chat_template:
         evaluate_kwargs["apply_chat_template"] = args.apply_chat_template
+    if args.chat_template_args is not None:
+        evaluate_kwargs["chat_template_args"] = args.chat_template_args
     if args.system_instruction is not None:
         evaluate_kwargs["system_instruction"] = args.system_instruction
     if args.fewshot_as_multiturn:
@@ -186,6 +222,23 @@ def _import_lm_eval():
 
 def _lm_eval_device(device: str) -> str:
     return str(resolve_device(device))
+
+
+def _filter_supported_init_kwargs(cls, kwargs: dict[str, Any]) -> dict[str, Any]:
+    signature = inspect.signature(cls.__init__)
+    if any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values()):
+        return {key: value for key, value in kwargs.items() if value is not None}
+
+    supported = set(signature.parameters) - {"self"}
+    filtered = {
+        key: value
+        for key, value in kwargs.items()
+        if value is not None and key in supported
+    }
+    dropped = sorted(key for key, value in kwargs.items() if value is not None and key not in supported)
+    if dropped:
+        print(f"Warning: current HFLM does not support these init kwargs and they were ignored: {dropped}")
+    return filtered
 
 
 def _with_thinking_stripper(HFLM):
