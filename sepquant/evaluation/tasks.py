@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import inspect
 import json
-import re
 from pathlib import Path
 from typing import Any
 
@@ -65,33 +64,8 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help="Apply the tokenizer chat template before evaluation. Optionally pass a template name/string.",
     )
-    parser.add_argument(
-        "--chat-template-args",
-        default=None,
-        help='JSON object passed to tokenizer.apply_chat_template, e.g. \'{"enable_thinking": false}\'.',
-    )
-    parser.add_argument(
-        "--disable-thinking",
-        action="store_true",
-        help="Set enable_thinking=false for chat-template-capable thinking models such as Qwen3.",
-    )
-    parser.add_argument(
-        "--think-end-token",
-        default=None,
-        help="Token or token id marking the end of a thinking block for lm-eval/HFLM.",
-    )
     parser.add_argument("--system-instruction", default=None)
     parser.add_argument("--fewshot-as-multiturn", action="store_true")
-    parser.add_argument(
-        "--strip-thinking",
-        action="store_true",
-        help="Strip <think>...</think> blocks from generated text before lm-eval scoring.",
-    )
-    parser.add_argument(
-        "--extract-boxed-answer",
-        action="store_true",
-        help="Replace generated text with the last \\boxed{...} answer before lm-eval scoring.",
-    )
     parser.add_argument(
         "--gen-kwargs",
         default=None,
@@ -110,13 +84,6 @@ def parse_args() -> argparse.Namespace:
         args.experiment_dir = Path(args.experiment_dir)
     if isinstance(args.gen_kwargs, str):
         args.gen_kwargs = _parse_json_object(args.gen_kwargs, "--gen-kwargs")
-    if isinstance(args.chat_template_args, str):
-        args.chat_template_args = _parse_json_object(args.chat_template_args, "--chat-template-args")
-    if args.disable_thinking:
-        args.chat_template_args = dict(args.chat_template_args or {})
-        args.chat_template_args["enable_thinking"] = False
-    if isinstance(args.think_end_token, str) and args.think_end_token.isdigit():
-        args.think_end_token = int(args.think_end_token)
     return args
 
 
@@ -144,19 +111,7 @@ def main() -> None:
             f"(model_type={loaded.patch_report.model_type})."
         )
 
-    if args.strip_thinking:
-        print("Enabled stripping of <think>...</think> blocks before lm-eval scoring.")
-    if args.extract_boxed_answer:
-        print("Enabled extraction of the last \\boxed{...} answer before lm-eval scoring.")
-    hflm_cls = (
-        _with_response_filter(
-            HFLM,
-            strip_thinking=args.strip_thinking,
-            extract_boxed_answer=args.extract_boxed_answer,
-        )
-        if args.strip_thinking or args.extract_boxed_answer
-        else HFLM
-    )
+    hflm_cls = HFLM
     hflm_kwargs = _filter_supported_init_kwargs(
         hflm_cls,
         {
@@ -165,11 +120,6 @@ def main() -> None:
             "batch_size": args.batch_size,
             "max_length": args.max_length,
             "device": _lm_eval_device(args.device),
-            "chat_template_args": args.chat_template_args,
-            "enable_thinking": args.chat_template_args.get("enable_thinking")
-            if isinstance(args.chat_template_args, dict)
-            else None,
-            "think_end_token": args.think_end_token,
         },
     )
     lm = hflm_cls(**hflm_kwargs)
@@ -184,12 +134,11 @@ def main() -> None:
         evaluate_kwargs["gen_kwargs"] = args.gen_kwargs
     if args.apply_chat_template:
         evaluate_kwargs["apply_chat_template"] = args.apply_chat_template
-    if args.chat_template_args is not None:
-        evaluate_kwargs["chat_template_args"] = args.chat_template_args
     if args.system_instruction is not None:
         evaluate_kwargs["system_instruction"] = args.system_instruction
     if args.fewshot_as_multiturn:
         evaluate_kwargs["fewshot_as_multiturn"] = True
+    evaluate_kwargs = _filter_supported_call_kwargs(evaluator.simple_evaluate, evaluate_kwargs)
     results = evaluator.simple_evaluate(**evaluate_kwargs)
 
     if args.output_path is not None:
@@ -256,70 +205,21 @@ def _filter_supported_init_kwargs(cls, kwargs: dict[str, Any]) -> dict[str, Any]
     return filtered
 
 
-def _with_response_filter(HFLM, *, strip_thinking: bool, extract_boxed_answer: bool):
-    class ResponseFilteredHFLM(HFLM):
-        def generate_until(self, *args, **kwargs):
-            responses = super().generate_until(*args, **kwargs)
-            filtered_responses = []
-            for response in responses:
-                if strip_thinking:
-                    response = _strip_thinking_text(response)
-                if extract_boxed_answer:
-                    response = _extract_last_boxed_answer(response)
-                filtered_responses.append(response)
-            return filtered_responses
+def _filter_supported_call_kwargs(function, kwargs: dict[str, Any]) -> dict[str, Any]:
+    signature = inspect.signature(function)
+    if any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values()):
+        return {key: value for key, value in kwargs.items() if value is not None}
 
-    return ResponseFilteredHFLM
-
-
-_THINKING_BLOCK_RE = re.compile(r"<think\b[^>]*>.*?(?:</think>|<\\think>)", re.IGNORECASE | re.DOTALL)
-_THINKING_CLOSE_RE = re.compile(r"(?:</think>|<\\think>)", re.IGNORECASE)
-_UNCLOSED_THINKING_RE = re.compile(r"<think\b[^>]*>.*$", re.IGNORECASE | re.DOTALL)
-
-
-def _strip_thinking_text(text: str) -> str:
-    text = _THINKING_BLOCK_RE.sub("", text)
-
-    # Some model outputs only expose the closing thinking tag before the answer.
-    closing_matches = list(_THINKING_CLOSE_RE.finditer(text))
-    if closing_matches:
-        text = text[closing_matches[-1].end() :]
-
-    return _UNCLOSED_THINKING_RE.sub("", text).strip()
-
-
-def _extract_last_boxed_answer(text: str) -> str:
-    starts = [match.start() for match in re.finditer(r"\\boxed\s*\{", text)]
-    for start in reversed(starts):
-        open_brace = text.find("{", start)
-        if open_brace == -1:
-            continue
-        close_brace = _find_matching_brace(text, open_brace)
-        if close_brace is not None:
-            return text[open_brace + 1 : close_brace].strip()
-    return text.strip()
-
-
-def _find_matching_brace(text: str, open_brace: int) -> int | None:
-    depth = 0
-    for index in range(open_brace, len(text)):
-        char = text[index]
-        if char == "{" and not _is_escaped(text, index):
-            depth += 1
-        elif char == "}" and not _is_escaped(text, index):
-            depth -= 1
-            if depth == 0:
-                return index
-    return None
-
-
-def _is_escaped(text: str, index: int) -> bool:
-    backslashes = 0
-    cursor = index - 1
-    while cursor >= 0 and text[cursor] == "\\":
-        backslashes += 1
-        cursor -= 1
-    return backslashes % 2 == 1
+    supported = set(signature.parameters)
+    filtered = {
+        key: value
+        for key, value in kwargs.items()
+        if value is not None and key in supported
+    }
+    dropped = sorted(key for key, value in kwargs.items() if value is not None and key not in supported)
+    if dropped:
+        print(f"Warning: current simple_evaluate does not support these kwargs and they were ignored: {dropped}")
+    return filtered
 
 
 def _compact_results(results: dict[str, Any]) -> dict[str, Any]:
