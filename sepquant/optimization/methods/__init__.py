@@ -5,6 +5,7 @@ from sepquant.optimization.methods.hif4_scale_search_gptq import (
     HIF4DynamicScaleSearchGPTQOptimizer,
     HIF4ScaleSearchGPTQOptimizer,
 )
+from sepquant.optimization.methods.hessian_regularization import HessianRegularization
 from sepquant.optimization.methods.mxfp4_scale_search import MXFP4HessianScaleSearchOptimizer
 from sepquant.optimization.methods.mxfp4_scale_search_gptq import (
     MXFP4DynamicScaleSearchGPTQOptimizer,
@@ -26,6 +27,7 @@ def build_layer_optimizer(
     activation_format: str,
     weight_format: str = "mxfp4",
     gptq_damp_percent: float = 0.01,
+    gptq_hessian_regularization: HessianRegularization = "scalar_damp",
     mxfp4_scale_offsets: list[int] | None = None,
     mxfp4_plus_macro_scale_code_offsets: list[int] | None = None,
     mxfp4_scale_objective: str = "block",
@@ -45,6 +47,7 @@ def build_layer_optimizer(
             weight_format=weight_format,
             activation_format=activation_format,
             damp_percent=gptq_damp_percent,
+            hessian_regularization=gptq_hessian_regularization,
             rotation=rotation,
             device=device,
         )
@@ -64,6 +67,7 @@ def build_layer_optimizer(
         return MXFP4ScaleSearchGPTQOptimizer(
             activation_format=activation_format,
             damp_percent=gptq_damp_percent,
+            hessian_regularization=gptq_hessian_regularization,
             exponent_offsets=mxfp4_scale_offsets or [-2, -1, 0, 1, 2],
             scale_objective=mxfp4_scale_objective,
             rotation=rotation,
@@ -75,6 +79,7 @@ def build_layer_optimizer(
         return MXFP4DynamicScaleSearchGPTQOptimizer(
             activation_format=activation_format,
             damp_percent=gptq_damp_percent,
+            hessian_regularization=gptq_hessian_regularization,
             exponent_offsets=mxfp4_scale_offsets or [-2, -1, 0, 1, 2],
             scale_objective=mxfp4_scale_objective,
             rotation=rotation,
@@ -86,6 +91,7 @@ def build_layer_optimizer(
         return MXFP4PlusDynamicScaleSearchGPTQOptimizer(
             activation_format=activation_format,
             damp_percent=gptq_damp_percent,
+            hessian_regularization=gptq_hessian_regularization,
             macro_scale_code_offsets=mxfp4_plus_macro_scale_code_offsets
             or [-8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8],
             scale_objective=mxfp4_scale_objective,
@@ -100,6 +106,7 @@ def build_layer_optimizer(
         return MXFP4RotationSelectGPTQOptimizer(
             activation_format=activation_format,
             damp_percent=gptq_damp_percent,
+            hessian_regularization=gptq_hessian_regularization,
             exponent_offsets=mxfp4_scale_offsets or [-2, -1, 0, 1, 2],
             scale_objective=mxfp4_scale_objective,
             candidate_rotation=rotation,
@@ -115,6 +122,7 @@ def build_layer_optimizer(
         return MXFP4RotationSelectGPTQOptimizer(
             activation_format=activation_format,
             damp_percent=gptq_damp_percent,
+            hessian_regularization=gptq_hessian_regularization,
             exponent_offsets=mxfp4_scale_offsets or [-2, -1, 0, 1, 2],
             scale_objective=mxfp4_scale_objective,
             candidate_rotation=rotation,
@@ -128,6 +136,7 @@ def build_layer_optimizer(
         return NVFP4ScaleSearchGPTQOptimizer(
             activation_format=activation_format,
             damp_percent=gptq_damp_percent,
+            hessian_regularization=gptq_hessian_regularization,
             scale_code_offsets=nvfp4_scale_code_offsets or [-3, -2, -1, 0, 1, 2, 3],
             scale_objective=mxfp4_scale_objective,
             rotation=rotation,
@@ -139,6 +148,7 @@ def build_layer_optimizer(
         return NVFP4DynamicScaleSearchGPTQOptimizer(
             activation_format=activation_format,
             damp_percent=gptq_damp_percent,
+            hessian_regularization=gptq_hessian_regularization,
             scale_code_offsets=nvfp4_scale_code_offsets or [-3, -2, -1, 0, 1, 2, 3],
             scale_objective=mxfp4_scale_objective,
             rotation=rotation,
@@ -150,6 +160,7 @@ def build_layer_optimizer(
         return HIF4ScaleSearchGPTQOptimizer(
             activation_format=activation_format,
             damp_percent=gptq_damp_percent,
+            hessian_regularization=gptq_hessian_regularization,
             level1_code_offsets=hif4_level1_code_offsets or [-2, -1, 0, 1, 2],
             scale_objective=mxfp4_scale_objective,
             rotation=rotation,
@@ -161,6 +172,7 @@ def build_layer_optimizer(
         return HIF4DynamicScaleSearchGPTQOptimizer(
             activation_format=activation_format,
             damp_percent=gptq_damp_percent,
+            hessian_regularization=gptq_hessian_regularization,
             level1_code_offsets=hif4_level1_code_offsets or [-2, -1, 0, 1, 2],
             scale_objective=mxfp4_scale_objective,
             rotation=rotation,

@@ -15,6 +15,10 @@ from sepquant.formats.hifp import (
 from sepquant.models.hadamard import block_hadamard_last_dim, rotate_gram_block_hadamard
 from sepquant.models.load import resolve_device
 from sepquant.optimization.layerwise import LayerOptimizationContext, LayerOptimizationResult
+from sepquant.optimization.methods.hessian_regularization import (
+    HessianRegularization,
+    regularize_hessian_for_cholesky,
+)
 from sepquant.quantization import LayerQuantizationSpec
 
 
@@ -22,6 +26,7 @@ from sepquant.quantization import LayerQuantizationSpec
 class HIF4ScaleSearchGPTQOptimizer:
     activation_format: str = "none"
     damp_percent: float = 0.01
+    hessian_regularization: HessianRegularization = "scalar_damp"
     level1_code_offsets: list[int] = field(default_factory=lambda: [-2, -1, 0, 1, 2])
     scale_objective: str = "block"
     rotation: str = "none"
@@ -52,6 +57,7 @@ class HIF4ScaleSearchGPTQOptimizer:
             gram=gram,
             selected_level1_codes=scale_search.selected_level1_codes,
             damp_percent=self.damp_percent,
+            hessian_regularization=self.hessian_regularization,
             device=compute_device,
         )
         rel_mse = _relative_reconstruction_error(
@@ -71,6 +77,7 @@ class HIF4ScaleSearchGPTQOptimizer:
                 "method": self.name,
                 "device": str(compute_device),
                 "damp_percent": self.damp_percent,
+                "hessian_regularization": self.hessian_regularization,
                 "rotation": self.rotation,
                 "relative_reconstruction_error": rel_mse,
                 **_prefix_metrics("scale_search", scale_search.metrics),
@@ -83,6 +90,7 @@ class HIF4ScaleSearchGPTQOptimizer:
 class HIF4DynamicScaleSearchGPTQOptimizer:
     activation_format: str = "none"
     damp_percent: float = 0.01
+    hessian_regularization: HessianRegularization = "scalar_damp"
     level1_code_offsets: list[int] = field(default_factory=lambda: [-2, -1, 0, 1, 2])
     scale_objective: str = "identity"
     rotation: str = "none"
@@ -107,6 +115,7 @@ class HIF4DynamicScaleSearchGPTQOptimizer:
             level1_code_offsets=self.level1_code_offsets,
             scale_objective=self.scale_objective,
             damp_percent=self.damp_percent,
+            hessian_regularization=self.hessian_regularization,
             device=compute_device,
         )
         rel_mse = _relative_reconstruction_error(
@@ -126,6 +135,7 @@ class HIF4DynamicScaleSearchGPTQOptimizer:
                 "method": self.name,
                 "device": str(compute_device),
                 "damp_percent": self.damp_percent,
+                "hessian_regularization": self.hessian_regularization,
                 "rotation": self.rotation,
                 "relative_reconstruction_error": rel_mse,
                 **dynamic_metrics,
@@ -273,6 +283,7 @@ def gptq_quantize_weight_with_hif4_level1_codes(
     gram: torch.Tensor,
     selected_level1_codes: torch.Tensor,
     damp_percent: float,
+    hessian_regularization: HessianRegularization = "scalar_damp",
     device: torch.device | str,
     block_size: int = 64,
 ) -> torch.Tensor:
@@ -301,8 +312,11 @@ def gptq_quantize_weight_with_hif4_level1_codes(
         hessian[dead, dead] = 1.0
         work_weight[:, dead] = 0.0
 
-    damp = damp_percent * torch.mean(torch.diag(hessian))
-    hessian = hessian + torch.eye(columns, dtype=hessian.dtype, device=hessian.device) * damp
+    hessian = regularize_hessian_for_cholesky(
+        hessian,
+        damp_percent=damp_percent,
+        method=hessian_regularization,
+    ).hessian
     hessian_inv = torch.linalg.cholesky(hessian)
     hessian_inv = torch.cholesky_inverse(hessian_inv)
     hessian_inv = torch.linalg.cholesky(hessian_inv, upper=True)
@@ -335,6 +349,7 @@ def gptq_quantize_weight_with_dynamic_hif4_scale_search(
     level1_code_offsets: list[int],
     scale_objective: str,
     damp_percent: float,
+    hessian_regularization: HessianRegularization = "scalar_damp",
     device: torch.device | str,
     block_size: int = 64,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
@@ -358,8 +373,12 @@ def gptq_quantize_weight_with_dynamic_hif4_scale_search(
         work_weight[:, dead] = 0.0
 
     search_hessian = hessian.clone()
-    damp = damp_percent * torch.mean(torch.diag(hessian))
-    hessian = hessian + torch.eye(columns, dtype=hessian.dtype, device=hessian.device) * damp
+    regularized_hessian = regularize_hessian_for_cholesky(
+        hessian,
+        damp_percent=damp_percent,
+        method=hessian_regularization,
+    )
+    hessian = regularized_hessian.hessian
     hessian_inv = torch.linalg.cholesky(hessian)
     hessian_inv = torch.cholesky_inverse(hessian_inv)
     hessian_inv = torch.linalg.cholesky(hessian_inv, upper=True)
@@ -414,6 +433,7 @@ def gptq_quantize_weight_with_dynamic_hif4_scale_search(
             block_diagonal_error / default_block_diagonal_error.clamp_min(1e-12)
         ).item(),
         "gptq_granularity": "block",
+        **regularized_hessian.metrics,
     }
 
 

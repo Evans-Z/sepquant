@@ -1,0 +1,17 @@
+{
+  "model": "/Users/phoenix/Works/models/Qwen3-0.6B",
+  "model_type": "qwen3",
+  "method": "mxfp4_dynamic_scale_search_gptq",
+  "calibration_dir": "outputs/calib/qwen3_wikitext2",
+  "weight_format": "mxfp4",
+  "activation_format": "none",
+  "gptq_damp_percent": 0.01,
+  "gptq_hessian_regularization": "diagonal_dominance",
+  "mxfp4_scale_offsets": [-2, -1, 0, 1, 2],
+  "mxfp4_scale_objective": "diag",
+  "include_lm_head": false,
+  "device": "mps",
+  "dtype": "auto",
+  "output_plan_path": "outputs/plans/qwen3_mxfp4_dynamic_scale_search_gptq_diagdom.json",
+  "save_quantized_checkpoint": "outputs/quant/qwen3_mxfp4_dynamic_scale_search_gptq_diagdom"
+}

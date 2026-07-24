@@ -13,6 +13,7 @@ from sepquant.models.load import parse_dtype, resolve_device
 from sepquant.models.patch import get_target_linears
 from sepquant.optimization.layerwise import build_plan_from_results, optimize_layers
 from sepquant.optimization.methods import build_layer_optimizer
+from sepquant.optimization.methods.hessian_regularization import HESSIAN_REGULARIZATION_CHOICES
 from sepquant.quantization import QuantizationPlan
 
 
@@ -78,6 +79,12 @@ def parse_args() -> argparse.Namespace:
         ],
     )
     parser.add_argument("--gptq-damp-percent", type=float, default=0.01)
+    parser.add_argument(
+        "--gptq-hessian-regularization",
+        default="scalar_damp",
+        choices=HESSIAN_REGULARIZATION_CHOICES,
+        help="Diagonal regularization strategy for GPTQ Hessian Cholesky.",
+    )
     parser.add_argument("--mxfp4-scale-offsets", nargs="+", type=int, default=[-2, -1, 0, 1, 2])
     parser.add_argument(
         "--mxfp4-plus-macro-scale-code-offsets",
@@ -163,6 +170,7 @@ def main() -> None:
         activation_format=args.activation_format,
         weight_format=args.weight_format,
         gptq_damp_percent=args.gptq_damp_percent,
+        gptq_hessian_regularization=args.gptq_hessian_regularization,
         mxfp4_scale_offsets=args.mxfp4_scale_offsets,
         mxfp4_plus_macro_scale_code_offsets=args.mxfp4_plus_macro_scale_code_offsets,
         mxfp4_scale_objective=args.mxfp4_scale_objective,
@@ -193,6 +201,7 @@ def main() -> None:
             "fallback_weight_format": args.fallback_weight_format,
             "activation_format": args.activation_format,
             "gptq_damp_percent": args.gptq_damp_percent,
+            "gptq_hessian_regularization": args.gptq_hessian_regularization,
             "mxfp4_scale_offsets": args.mxfp4_scale_offsets,
             "mxfp4_plus_macro_scale_code_offsets": args.mxfp4_plus_macro_scale_code_offsets,
             "mxfp4_scale_objective": args.mxfp4_scale_objective,

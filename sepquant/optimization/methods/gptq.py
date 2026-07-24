@@ -9,6 +9,10 @@ from sepquant.formats import get_fp4_format
 from sepquant.formats.fp_ops import quantize_e2m1
 from sepquant.models.hadamard import block_hadamard_last_dim, rotate_gram_block_hadamard
 from sepquant.optimization.layerwise import LayerOptimizationContext, LayerOptimizationResult
+from sepquant.optimization.methods.hessian_regularization import (
+    HessianRegularization,
+    regularize_hessian_for_cholesky,
+)
 from sepquant.quantization import LayerQuantizationSpec
 
 
@@ -17,6 +21,7 @@ class GPTQOptimizer:
     weight_format: str
     activation_format: str = "none"
     damp_percent: float = 0.01
+    hessian_regularization: HessianRegularization = "scalar_damp"
     rotation: str = "none"
     device: str = "auto"
     name: str = "gptq"
@@ -38,6 +43,7 @@ class GPTQOptimizer:
             gram=gram,
             weight_format=self.weight_format,
             damp_percent=self.damp_percent,
+            hessian_regularization=self.hessian_regularization,
             device=compute_device,
         )
         rel_mse = _relative_reconstruction_error(
@@ -56,6 +62,7 @@ class GPTQOptimizer:
             metrics={
                 "method": "gptq",
                 "damp_percent": self.damp_percent,
+                "hessian_regularization": self.hessian_regularization,
                 "device": str(compute_device),
                 "rotation": self.rotation,
                 "weight_scale_granularity": "block",
@@ -71,6 +78,7 @@ def gptq_quantize_weight(
     gram: torch.Tensor,
     weight_format: str,
     damp_percent: float,
+    hessian_regularization: HessianRegularization = "scalar_damp",
     device: torch.device | str,
 ) -> torch.Tensor:
     """Column-wise GPTQ-style quantization with Hessian inverse compensation."""
@@ -93,8 +101,11 @@ def gptq_quantize_weight(
         hessian[dead, dead] = 1.0
         work_weight[:, dead] = 0.0
 
-    damp = damp_percent * torch.mean(torch.diag(hessian))
-    hessian = hessian + torch.eye(columns, dtype=hessian.dtype, device=hessian.device) * damp
+    hessian = regularize_hessian_for_cholesky(
+        hessian,
+        damp_percent=damp_percent,
+        method=hessian_regularization,
+    ).hessian
     hessian_inv = torch.linalg.cholesky(hessian)
     hessian_inv = torch.cholesky_inverse(hessian_inv)
     hessian_inv = torch.linalg.cholesky(hessian_inv, upper=True)

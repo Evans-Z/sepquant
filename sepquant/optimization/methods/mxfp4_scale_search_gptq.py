@@ -16,6 +16,10 @@ from sepquant.formats.mxfp import (
 from sepquant.models.hadamard import block_hadamard_last_dim, rotate_gram_block_hadamard
 from sepquant.models.load import resolve_device
 from sepquant.optimization.layerwise import LayerOptimizationContext, LayerOptimizationResult
+from sepquant.optimization.methods.hessian_regularization import (
+    HessianRegularization,
+    regularize_hessian_for_cholesky,
+)
 from sepquant.optimization.methods.mxfp4_scale_search import search_mxfp4_hessian_scales
 from sepquant.quantization import LayerQuantizationSpec
 
@@ -24,6 +28,7 @@ from sepquant.quantization import LayerQuantizationSpec
 class MXFP4ScaleSearchGPTQOptimizer:
     activation_format: str = "none"
     damp_percent: float = 0.01
+    hessian_regularization: HessianRegularization = "scalar_damp"
     exponent_offsets: list[int] = field(default_factory=lambda: [-2, -1, 0, 1, 2])
     scale_objective: str = "block"
     rotation: str = "none"
@@ -54,6 +59,7 @@ class MXFP4ScaleSearchGPTQOptimizer:
             gram=gram,
             selected_scales=scale_search.selected_scales,
             damp_percent=self.damp_percent,
+            hessian_regularization=self.hessian_regularization,
             device=compute_device,
         )
         rel_mse = _relative_reconstruction_error(
@@ -73,6 +79,7 @@ class MXFP4ScaleSearchGPTQOptimizer:
                 "method": self.name,
                 "device": str(compute_device),
                 "damp_percent": self.damp_percent,
+                "hessian_regularization": self.hessian_regularization,
                 "rotation": self.rotation,
                 "relative_reconstruction_error": rel_mse,
                 **_prefix_metrics("scale_search", scale_search.metrics),
@@ -85,6 +92,7 @@ class MXFP4ScaleSearchGPTQOptimizer:
 class MXFP4DynamicScaleSearchGPTQOptimizer:
     activation_format: str = "none"
     damp_percent: float = 0.01
+    hessian_regularization: HessianRegularization = "scalar_damp"
     exponent_offsets: list[int] = field(default_factory=lambda: [-2, -1, 0, 1, 2])
     scale_objective: str = "identity"
     rotation: str = "none"
@@ -109,6 +117,7 @@ class MXFP4DynamicScaleSearchGPTQOptimizer:
             exponent_offsets=self.exponent_offsets,
             scale_objective=self.scale_objective,
             damp_percent=self.damp_percent,
+            hessian_regularization=self.hessian_regularization,
             device=compute_device,
         )
         rel_mse = _relative_reconstruction_error(
@@ -128,6 +137,7 @@ class MXFP4DynamicScaleSearchGPTQOptimizer:
                 "method": self.name,
                 "device": str(compute_device),
                 "damp_percent": self.damp_percent,
+                "hessian_regularization": self.hessian_regularization,
                 "rotation": self.rotation,
                 "relative_reconstruction_error": rel_mse,
                 **dynamic_metrics,
@@ -140,6 +150,7 @@ class MXFP4DynamicScaleSearchGPTQOptimizer:
 class MXFP4PlusDynamicScaleSearchGPTQOptimizer:
     activation_format: str = "none"
     damp_percent: float = 0.01
+    hessian_regularization: HessianRegularization = "scalar_damp"
     macro_scale_code_offsets: list[int] = field(
         default_factory=lambda: [-8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8]
     )
@@ -166,6 +177,7 @@ class MXFP4PlusDynamicScaleSearchGPTQOptimizer:
             macro_scale_code_offsets=self.macro_scale_code_offsets,
             scale_objective=self.scale_objective,
             damp_percent=self.damp_percent,
+            hessian_regularization=self.hessian_regularization,
             device=compute_device,
         )
         rel_mse = _relative_reconstruction_error(
@@ -185,6 +197,7 @@ class MXFP4PlusDynamicScaleSearchGPTQOptimizer:
                 "method": self.name,
                 "device": str(compute_device),
                 "damp_percent": self.damp_percent,
+                "hessian_regularization": self.hessian_regularization,
                 "rotation": self.rotation,
                 "relative_reconstruction_error": rel_mse,
                 **dynamic_metrics,
@@ -197,6 +210,7 @@ class MXFP4PlusDynamicScaleSearchGPTQOptimizer:
 class MXFP4RotationSelectGPTQOptimizer:
     activation_format: str = "none"
     damp_percent: float = 0.01
+    hessian_regularization: HessianRegularization = "scalar_damp"
     exponent_offsets: list[int] = field(default_factory=lambda: [-2, -1, 0, 1, 2])
     scale_objective: str = "identity"
     candidate_rotation: str = "block_hadamard"
@@ -237,6 +251,7 @@ class MXFP4RotationSelectGPTQOptimizer:
             exponent_offsets=self.exponent_offsets,
             scale_objective=self.scale_objective,
             damp_percent=self.damp_percent,
+            hessian_regularization=self.hessian_regularization,
             dynamic_scale_search=self.dynamic_scale_search,
             device=compute_device,
         )
@@ -250,6 +265,7 @@ class MXFP4RotationSelectGPTQOptimizer:
             exponent_offsets=self.exponent_offsets,
             scale_objective=self.scale_objective,
             damp_percent=self.damp_percent,
+            hessian_regularization=self.hessian_regularization,
             dynamic_scale_search=self.dynamic_scale_search,
             device=compute_device,
         )
@@ -268,6 +284,7 @@ class MXFP4RotationSelectGPTQOptimizer:
                 "method": self.name,
                 "device": str(compute_device),
                 "damp_percent": self.damp_percent,
+                "hessian_regularization": self.hessian_regularization,
                 "rotation": selected.rotation,
                 "candidate_rotation": self.candidate_rotation,
                 "selection_margin": self.selection_margin,
@@ -305,6 +322,7 @@ def gptq_quantize_weight_with_mxfp4_scales(
     gram: torch.Tensor,
     selected_scales: torch.Tensor,
     damp_percent: float,
+    hessian_regularization: HessianRegularization = "scalar_damp",
     device: torch.device | str,
     block_size: int = 32,
 ) -> torch.Tensor:
@@ -333,8 +351,11 @@ def gptq_quantize_weight_with_mxfp4_scales(
         hessian[dead, dead] = 1.0
         work_weight[:, dead] = 0.0
 
-    damp = damp_percent * torch.mean(torch.diag(hessian))
-    hessian = hessian + torch.eye(columns, dtype=hessian.dtype, device=hessian.device) * damp
+    hessian = regularize_hessian_for_cholesky(
+        hessian,
+        damp_percent=damp_percent,
+        method=hessian_regularization,
+    ).hessian
     hessian_inv = torch.linalg.cholesky(hessian)
     hessian_inv = torch.cholesky_inverse(hessian_inv)
     hessian_inv = torch.linalg.cholesky(hessian_inv, upper=True)
@@ -504,6 +525,7 @@ def gptq_quantize_weight_with_dynamic_mxfp4_scale_search(
     exponent_offsets: list[int],
     scale_objective: str,
     damp_percent: float,
+    hessian_regularization: HessianRegularization = "scalar_damp",
     device: torch.device | str,
     block_size: int = 32,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
@@ -527,8 +549,12 @@ def gptq_quantize_weight_with_dynamic_mxfp4_scale_search(
         work_weight[:, dead] = 0.0
 
     search_hessian = hessian.clone()
-    damp = damp_percent * torch.mean(torch.diag(hessian))
-    hessian = hessian + torch.eye(columns, dtype=hessian.dtype, device=hessian.device) * damp
+    regularized_hessian = regularize_hessian_for_cholesky(
+        hessian,
+        damp_percent=damp_percent,
+        method=hessian_regularization,
+    )
+    hessian = regularized_hessian.hessian
     hessian_inv = torch.linalg.cholesky(hessian)
     hessian_inv = torch.cholesky_inverse(hessian_inv)
     hessian_inv = torch.linalg.cholesky(hessian_inv, upper=True)
@@ -580,6 +606,7 @@ def gptq_quantize_weight_with_dynamic_mxfp4_scale_search(
             block_diagonal_error / default_block_diagonal_error.clamp_min(1e-12)
         ).item(),
         "gptq_granularity": "block",
+        **regularized_hessian.metrics,
     }
 
 
@@ -590,6 +617,7 @@ def gptq_quantize_weight_with_dynamic_mxfp4_plus_scale_search(
     macro_scale_code_offsets: list[int],
     scale_objective: str,
     damp_percent: float,
+    hessian_regularization: HessianRegularization = "scalar_damp",
     device: torch.device | str,
     macro_block_size: int = 128,
     payload_block_size: int = 16,
@@ -614,8 +642,12 @@ def gptq_quantize_weight_with_dynamic_mxfp4_plus_scale_search(
         work_weight[:, dead] = 0.0
 
     search_hessian = hessian.clone()
-    damp = damp_percent * torch.mean(torch.diag(hessian))
-    hessian = hessian + torch.eye(columns, dtype=hessian.dtype, device=hessian.device) * damp
+    regularized_hessian = regularize_hessian_for_cholesky(
+        hessian,
+        damp_percent=damp_percent,
+        method=hessian_regularization,
+    )
+    hessian = regularized_hessian.hessian
     hessian_inv = torch.linalg.cholesky(hessian)
     hessian_inv = torch.cholesky_inverse(hessian_inv)
     hessian_inv = torch.linalg.cholesky(hessian_inv, upper=True)
@@ -672,6 +704,7 @@ def gptq_quantize_weight_with_dynamic_mxfp4_plus_scale_search(
             block_diagonal_error / default_block_diagonal_error.clamp_min(1e-12)
         ).item(),
         "gptq_granularity": "macro_block",
+        **regularized_hessian.metrics,
     }
 
 
@@ -686,6 +719,7 @@ def _run_mxfp4_gptq_candidate(
     exponent_offsets: list[int],
     scale_objective: str,
     damp_percent: float,
+    hessian_regularization: HessianRegularization = "scalar_damp",
     dynamic_scale_search: bool,
     device: torch.device | str,
 ) -> _MXFP4GPTQCandidate:
@@ -701,6 +735,7 @@ def _run_mxfp4_gptq_candidate(
             exponent_offsets=exponent_offsets,
             scale_objective=scale_objective,
             damp_percent=damp_percent,
+            hessian_regularization=hessian_regularization,
             device=compute_device,
         )
     else:
@@ -716,6 +751,7 @@ def _run_mxfp4_gptq_candidate(
             gram=rotated_gram,
             selected_scales=scale_search.selected_scales,
             damp_percent=damp_percent,
+            hessian_regularization=hessian_regularization,
             device=compute_device,
         )
         candidate_metrics = _prefix_metrics("scale_search", scale_search.metrics)
