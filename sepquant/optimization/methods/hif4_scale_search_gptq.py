@@ -23,6 +23,58 @@ from sepquant.quantization import LayerQuantizationSpec
 
 
 @dataclass(frozen=True)
+class HIF4HessianScaleSearchOptimizer:
+    activation_format: str = "none"
+    level1_code_offsets: list[int] = field(default_factory=lambda: [-2, -1, 0, 1, 2])
+    scale_objective: str = "block"
+    rotation: str = "none"
+    device: str = "auto"
+    name: str = "hif4_hessian_scale_search"
+
+    def optimize(self, context: LayerOptimizationContext) -> LayerOptimizationResult:
+        if context.gram is None:
+            return LayerOptimizationResult(
+                layer_name=context.layer_name,
+                spec=LayerQuantizationSpec(enabled=False),
+                metrics={"reason": "missing_gram"},
+            )
+
+        compute_device = resolve_device(self.device)
+        original_weight = context.module.weight.detach().to(device=compute_device, dtype=torch.float32)
+        original_weight = _rotate_weight(original_weight, rotation=self.rotation)
+        gram = _rotate_gram(context.gram, rotation=self.rotation).to(device=compute_device)
+        scale_search = search_hif4_hessian_scales(
+            weight=original_weight,
+            gram=gram,
+            level1_code_offsets=self.level1_code_offsets,
+            objective=self.scale_objective,
+            device=compute_device,
+        )
+        rel_mse = _relative_reconstruction_error(
+            original_weight=original_weight,
+            quantized_weight=scale_search.quantized_weight,
+            gram=gram,
+        )
+        return LayerOptimizationResult(
+            layer_name=context.layer_name,
+            spec=LayerQuantizationSpec(
+                weight_format="hif4",
+                activation_format=self.activation_format,
+                rotation=self.rotation,
+                enabled=True,
+            ),
+            metrics={
+                "method": self.name,
+                "device": str(compute_device),
+                "rotation": self.rotation,
+                "relative_reconstruction_error": rel_mse,
+                **scale_search.metrics,
+            },
+            optimized_weight=scale_search.quantized_weight.cpu(),
+        )
+
+
+@dataclass(frozen=True)
 class HIF4ScaleSearchGPTQOptimizer:
     activation_format: str = "none"
     damp_percent: float = 0.01

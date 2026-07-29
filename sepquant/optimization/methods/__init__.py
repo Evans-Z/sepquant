@@ -3,6 +3,7 @@ from __future__ import annotations
 from sepquant.optimization.methods.gptq import GPTQOptimizer
 from sepquant.optimization.methods.hif4_scale_search_gptq import (
     HIF4DynamicScaleSearchGPTQOptimizer,
+    HIF4HessianScaleSearchOptimizer,
     HIF4ScaleSearchGPTQOptimizer,
 )
 from sepquant.optimization.methods.hessian_regularization import HessianRegularization
@@ -15,6 +16,7 @@ from sepquant.optimization.methods.mxfp4_scale_search_gptq import (
 )
 from sepquant.optimization.methods.nvfp4_scale_search_gptq import (
     NVFP4DynamicScaleSearchGPTQOptimizer,
+    NVFP4HessianScaleSearchOptimizer,
     NVFP4ScaleSearchGPTQOptimizer,
 )
 from sepquant.optimization.methods.weight_format_search import WeightFormatSearchOptimizer
@@ -130,6 +132,16 @@ def build_layer_optimizer(
             name="mxfp4_dynamic_scale_search_gptq_rotation_select",
             device=device,
         )
+    if method == "nvfp4_hessian_scale_search":
+        if weight_format != "nvfp4":
+            raise ValueError("nvfp4_hessian_scale_search only supports weight_format='nvfp4'")
+        return NVFP4HessianScaleSearchOptimizer(
+            activation_format=activation_format,
+            scale_code_offsets=nvfp4_scale_code_offsets or [-3, -2, -1, 0, 1, 2, 3],
+            scale_objective=mxfp4_scale_objective,
+            rotation=rotation,
+            device=device,
+        )
     if method == "nvfp4_hessian_scale_search_gptq":
         if weight_format != "nvfp4":
             raise ValueError("nvfp4_hessian_scale_search_gptq only supports weight_format='nvfp4'")
@@ -150,6 +162,16 @@ def build_layer_optimizer(
             damp_percent=gptq_damp_percent,
             hessian_regularization=gptq_hessian_regularization,
             scale_code_offsets=nvfp4_scale_code_offsets or [-3, -2, -1, 0, 1, 2, 3],
+            scale_objective=mxfp4_scale_objective,
+            rotation=rotation,
+            device=device,
+        )
+    if method == "hif4_hessian_scale_search":
+        if weight_format != "hif4":
+            raise ValueError("hif4_hessian_scale_search only supports weight_format='hif4'")
+        return HIF4HessianScaleSearchOptimizer(
+            activation_format=activation_format,
+            level1_code_offsets=hif4_level1_code_offsets or [-2, -1, 0, 1, 2],
             scale_objective=mxfp4_scale_objective,
             rotation=rotation,
             device=device,
@@ -184,6 +206,7 @@ def build_layer_optimizer(
 __all__ = [
     "GPTQOptimizer",
     "HIF4DynamicScaleSearchGPTQOptimizer",
+    "HIF4HessianScaleSearchOptimizer",
     "HIF4ScaleSearchGPTQOptimizer",
     "MXFP4DynamicScaleSearchGPTQOptimizer",
     "MXFP4HessianScaleSearchOptimizer",
@@ -191,6 +214,7 @@ __all__ = [
     "MXFP4RotationSelectGPTQOptimizer",
     "MXFP4ScaleSearchGPTQOptimizer",
     "NVFP4DynamicScaleSearchGPTQOptimizer",
+    "NVFP4HessianScaleSearchOptimizer",
     "NVFP4ScaleSearchGPTQOptimizer",
     "WeightFormatSearchOptimizer",
     "build_layer_optimizer",

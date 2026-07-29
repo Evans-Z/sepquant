@@ -1,0 +1,16 @@
+{
+  "model": "/Users/phoenix/Works/models/Qwen3-0.6B",
+  "model_type": "qwen3",
+  "method": "hif4_hessian_scale_search",
+  "calibration_dir": "outputs/calib/qwen3_wikitext2",
+  "weight_format": "hif4",
+  "activation_format": "hif4_search",
+  "rotation": "none",
+  "mxfp4_scale_objective": "diag",
+  "hif4_level1_code_offsets": [-2, -1, 0, 1, 2],
+  "include_lm_head": false,
+  "device": "mps",
+  "dtype": "auto",
+  "output_plan_path": "outputs/plans/qwen3_hif4_hessian_scale_search.json",
+  "save_quantized_checkpoint": "outputs/quant/qwen3_hif4_hessian_scale_search"
+}
