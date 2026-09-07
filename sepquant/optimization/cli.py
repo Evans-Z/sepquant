@@ -17,10 +17,14 @@ from sepquant.optimization.methods.hessian_regularization import HESSIAN_REGULAR
 from sepquant.quantization import QuantizationPlan
 
 
-WEIGHT_FORMAT_CHOICES = ["mxfp4", "mxfp4_plus", "nvfp4", "hif4"]
+WEIGHT_FORMAT_CHOICES = ["mxfp4", "mxfp4_e4m3", "mxfp4_e5m3", "mxfp4_plus", "nvfp4", "hif4"]
 FALLBACK_WEIGHT_FORMAT_CHOICES = [
     "none",
     "mxfp4",
+    "mxfp4_e4m3",
+    "mxfp4_e4m3_search",
+    "mxfp4_e5m3",
+    "mxfp4_e5m3_search",
     "mxfp4_plus",
     "mxfp4_plus_search",
     "mxfp4_search",
@@ -69,6 +73,10 @@ def parse_args() -> argparse.Namespace:
         choices=[
             "none",
             "mxfp4",
+            "mxfp4_e4m3",
+            "mxfp4_e4m3_search",
+            "mxfp4_e5m3",
+            "mxfp4_e5m3_search",
             "mxfp4_plus",
             "mxfp4_plus_search",
             "mxfp4_search",
@@ -98,6 +106,13 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         type=int,
         default=[-3, -2, -1, 0, 1, 2, 3],
+    )
+    parser.add_argument(
+        "--mxfp4-float-scale-code-offsets",
+        nargs="+",
+        type=int,
+        default=[-3, -2, -1, 0, 1, 2, 3],
+        help="E4M3/E5M3 scale-code offsets for mxfp4_e4m3 / mxfp4_e5m3 scale search.",
     )
     parser.add_argument("--hif4-level1-code-offsets", nargs="+", type=int, default=[-2, -1, 0, 1, 2])
     parser.add_argument("--rotation", default="none", choices=["none", "block_hadamard"])
@@ -137,6 +152,12 @@ def parse_args() -> argparse.Namespace:
         args.nvfp4_scale_code_offsets = [
             int(item.strip()) for item in args.nvfp4_scale_code_offsets.split(",") if item.strip()
         ]
+    if isinstance(args.mxfp4_float_scale_code_offsets, str):
+        args.mxfp4_float_scale_code_offsets = [
+            int(item.strip())
+            for item in args.mxfp4_float_scale_code_offsets.split(",")
+            if item.strip()
+        ]
     if isinstance(args.hif4_level1_code_offsets, str):
         args.hif4_level1_code_offsets = [
             int(item.strip()) for item in args.hif4_level1_code_offsets.split(",") if item.strip()
@@ -175,6 +196,7 @@ def main() -> None:
         mxfp4_plus_macro_scale_code_offsets=args.mxfp4_plus_macro_scale_code_offsets,
         mxfp4_scale_objective=args.mxfp4_scale_objective,
         nvfp4_scale_code_offsets=args.nvfp4_scale_code_offsets,
+        mxfp4_float_scale_code_offsets=args.mxfp4_float_scale_code_offsets,
         hif4_level1_code_offsets=args.hif4_level1_code_offsets,
         rotation=args.rotation,
         device=args.device,
@@ -206,6 +228,7 @@ def main() -> None:
             "mxfp4_plus_macro_scale_code_offsets": args.mxfp4_plus_macro_scale_code_offsets,
             "mxfp4_scale_objective": args.mxfp4_scale_objective,
             "nvfp4_scale_code_offsets": args.nvfp4_scale_code_offsets,
+            "mxfp4_float_scale_code_offsets": args.mxfp4_float_scale_code_offsets,
             "hif4_level1_code_offsets": args.hif4_level1_code_offsets,
             "rotation": args.rotation,
             "device": args.device,

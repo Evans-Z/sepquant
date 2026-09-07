@@ -7,6 +7,13 @@ from sepquant.optimization.methods.hif4_scale_search_gptq import (
     HIF4ScaleSearchGPTQOptimizer,
 )
 from sepquant.optimization.methods.hessian_regularization import HessianRegularization
+from sepquant.optimization.methods.mxfp4_float_scale_search_gptq import (
+    MXFP4_E4M3_SCALE_SPEC,
+    MXFP4_E5M3_SCALE_SPEC,
+    MXFP4FloatDynamicScaleSearchGPTQOptimizer,
+    MXFP4FloatHessianScaleSearchOptimizer,
+    MXFP4FloatScaleSearchGPTQOptimizer,
+)
 from sepquant.optimization.methods.mxfp4_scale_search import MXFP4HessianScaleSearchOptimizer
 from sepquant.optimization.methods.mxfp4_scale_search_gptq import (
     MXFP4DynamicScaleSearchGPTQOptimizer,
@@ -22,6 +29,12 @@ from sepquant.optimization.methods.nvfp4_scale_search_gptq import (
 from sepquant.optimization.methods.weight_format_search import WeightFormatSearchOptimizer
 
 
+_MXFP4_FLOAT_SCALE_SPECS = {
+    "mxfp4_e4m3": MXFP4_E4M3_SCALE_SPEC,
+    "mxfp4_e5m3": MXFP4_E5M3_SCALE_SPEC,
+}
+
+
 def build_layer_optimizer(
     *,
     method: str,
@@ -34,6 +47,7 @@ def build_layer_optimizer(
     mxfp4_plus_macro_scale_code_offsets: list[int] | None = None,
     mxfp4_scale_objective: str = "block",
     nvfp4_scale_code_offsets: list[int] | None = None,
+    mxfp4_float_scale_code_offsets: list[int] | None = None,
     hif4_level1_code_offsets: list[int] | None = None,
     rotation: str = "none",
     device: str = "auto",
@@ -89,7 +103,9 @@ def build_layer_optimizer(
         )
     if method == "mxfp4_plus_dynamic_scale_search_gptq":
         if weight_format != "mxfp4_plus":
-            raise ValueError("mxfp4_plus_dynamic_scale_search_gptq only supports weight_format='mxfp4_plus'")
+            raise ValueError(
+                "mxfp4_plus_dynamic_scale_search_gptq only supports weight_format='mxfp4_plus'"
+            )
         return MXFP4PlusDynamicScaleSearchGPTQOptimizer(
             activation_format=activation_format,
             damp_percent=gptq_damp_percent,
@@ -131,6 +147,58 @@ def build_layer_optimizer(
             dynamic_scale_search=True,
             name="mxfp4_dynamic_scale_search_gptq_rotation_select",
             device=device,
+        )
+    if method in {
+        "mxfp4_e4m3_hessian_scale_search",
+        "mxfp4_e5m3_hessian_scale_search",
+    }:
+        scale_spec = _resolve_mxfp4_float_scale_spec(method=method, weight_format=weight_format)
+        return MXFP4FloatHessianScaleSearchOptimizer(
+            scale_spec=scale_spec,
+            activation_format=activation_format,
+            scale_code_offsets=mxfp4_float_scale_code_offsets
+            or nvfp4_scale_code_offsets
+            or [-3, -2, -1, 0, 1, 2, 3],
+            scale_objective=mxfp4_scale_objective,
+            rotation=rotation,
+            device=device,
+            name=method,
+        )
+    if method in {
+        "mxfp4_e4m3_hessian_scale_search_gptq",
+        "mxfp4_e5m3_hessian_scale_search_gptq",
+    }:
+        scale_spec = _resolve_mxfp4_float_scale_spec(method=method, weight_format=weight_format)
+        return MXFP4FloatScaleSearchGPTQOptimizer(
+            scale_spec=scale_spec,
+            activation_format=activation_format,
+            damp_percent=gptq_damp_percent,
+            hessian_regularization=gptq_hessian_regularization,
+            scale_code_offsets=mxfp4_float_scale_code_offsets
+            or nvfp4_scale_code_offsets
+            or [-3, -2, -1, 0, 1, 2, 3],
+            scale_objective=mxfp4_scale_objective,
+            rotation=rotation,
+            device=device,
+            name=method,
+        )
+    if method in {
+        "mxfp4_e4m3_dynamic_scale_search_gptq",
+        "mxfp4_e5m3_dynamic_scale_search_gptq",
+    }:
+        scale_spec = _resolve_mxfp4_float_scale_spec(method=method, weight_format=weight_format)
+        return MXFP4FloatDynamicScaleSearchGPTQOptimizer(
+            scale_spec=scale_spec,
+            activation_format=activation_format,
+            damp_percent=gptq_damp_percent,
+            hessian_regularization=gptq_hessian_regularization,
+            scale_code_offsets=mxfp4_float_scale_code_offsets
+            or nvfp4_scale_code_offsets
+            or [-3, -2, -1, 0, 1, 2, 3],
+            scale_objective=mxfp4_scale_objective,
+            rotation=rotation,
+            device=device,
+            name=method,
         )
     if method == "nvfp4_hessian_scale_search":
         if weight_format != "nvfp4":
@@ -203,12 +271,22 @@ def build_layer_optimizer(
     raise ValueError(f"Unsupported optimization method: {method}")
 
 
+def _resolve_mxfp4_float_scale_spec(*, method: str, weight_format: str):
+    expected = method.split("_hessian_")[0].split("_dynamic_")[0]
+    if weight_format != expected:
+        raise ValueError(f"{method} only supports weight_format='{expected}'")
+    return _MXFP4_FLOAT_SCALE_SPECS[expected]
+
+
 __all__ = [
     "GPTQOptimizer",
     "HIF4DynamicScaleSearchGPTQOptimizer",
     "HIF4HessianScaleSearchOptimizer",
     "HIF4ScaleSearchGPTQOptimizer",
     "MXFP4DynamicScaleSearchGPTQOptimizer",
+    "MXFP4FloatDynamicScaleSearchGPTQOptimizer",
+    "MXFP4FloatHessianScaleSearchOptimizer",
+    "MXFP4FloatScaleSearchGPTQOptimizer",
     "MXFP4HessianScaleSearchOptimizer",
     "MXFP4PlusDynamicScaleSearchGPTQOptimizer",
     "MXFP4RotationSelectGPTQOptimizer",

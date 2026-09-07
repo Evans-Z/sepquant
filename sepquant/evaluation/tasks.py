@@ -32,13 +32,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=float, default=None)
     parser.add_argument("--batch-size", default="1")
     parser.add_argument("--max-length", type=int, default=None)
-    parser.add_argument("--weight-format", default="mxfp4", choices=["none", "mxfp4", "mxfp4_plus", "nvfp4", "hif4"])
+    parser.add_argument(
+        "--weight-format",
+        default="mxfp4",
+        choices=["none", "mxfp4", "mxfp4_e4m3", "mxfp4_e5m3", "mxfp4_plus", "nvfp4", "hif4"],
+    )
     parser.add_argument(
         "--activation-format",
         default="none",
         choices=[
             "none",
             "mxfp4",
+            "mxfp4_e4m3",
+            "mxfp4_e4m3_search",
+            "mxfp4_e5m3",
+            "mxfp4_e5m3_search",
             "mxfp4_plus",
             "mxfp4_plus_search",
             "mxfp4_search",

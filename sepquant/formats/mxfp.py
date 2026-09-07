@@ -7,8 +7,11 @@ import torch
 from sepquant.formats.fp_ops import (
     from_blocks,
     quantize_e2m1,
+    quantize_unsigned_fp,
     raw_e2m1_block_scale,
     to_blocks,
+    unsigned_fp_code_from_value,
+    unsigned_fp_value_from_code,
 )
 
 
@@ -35,6 +38,142 @@ class MXFP4Format:
             raw_scale,
             min_exponent=self.min_scale_exponent,
             max_exponent=self.max_scale_exponent,
+        )
+
+
+@dataclass(frozen=True)
+class MXFP4E4M3Format:
+    """MXFP4 with E2M1 payload and unsigned E4M3 per-block scales.
+
+    Same microscaling layout as MXFP4 (block size 32); only the block-scale
+    encoding changes from E8M0 (power-of-two) to unsigned E4M3.
+    """
+
+    name: str = "mxfp4_e4m3"
+    block_size: int = 32
+    eps: float = 1e-12
+    scale_exponent_bits: int = 4
+    scale_mantissa_bits: int = 3
+    scale_exponent_bias: int = 7
+
+    def quantize(self, tensor: torch.Tensor) -> torch.Tensor:
+        blocks, metadata = to_blocks(tensor, self.block_size)
+        scale = self._block_scale(blocks)
+        quantized = quantize_e2m1(blocks / scale)
+        dequantized = quantized * scale
+        return from_blocks(dequantized, metadata)
+
+    def _block_scale(self, blocks: torch.Tensor) -> torch.Tensor:
+        raw_scale = raw_e2m1_block_scale(blocks, self.eps)
+        return _exmy_scale_from_raw(
+            raw_scale,
+            exponent_bits=self.scale_exponent_bits,
+            mantissa_bits=self.scale_mantissa_bits,
+            exponent_bias=self.scale_exponent_bias,
+            eps=self.eps,
+        )
+
+
+@dataclass(frozen=True)
+class MXFP4E5M3Format:
+    """MXFP4 with E2M1 payload and unsigned E5M3 (UE5M3) per-block scales.
+
+    Same microscaling layout as MXFP4 (block size 32); only the block-scale
+    encoding changes from E8M0 (power-of-two) to unsigned E5M3. Relative to
+    E4M3, the unused sign bit becomes an extra exponent bit (bias 15), so the
+    minimum non-zero scale goes from ``2**-9`` to ``2**-17``.
+    """
+
+    name: str = "mxfp4_e5m3"
+    block_size: int = 32
+    eps: float = 1e-12
+    scale_exponent_bits: int = 5
+    scale_mantissa_bits: int = 3
+    scale_exponent_bias: int = 15
+
+    def quantize(self, tensor: torch.Tensor) -> torch.Tensor:
+        blocks, metadata = to_blocks(tensor, self.block_size)
+        scale = self._block_scale(blocks)
+        quantized = quantize_e2m1(blocks / scale)
+        dequantized = quantized * scale
+        return from_blocks(dequantized, metadata)
+
+    def _block_scale(self, blocks: torch.Tensor) -> torch.Tensor:
+        raw_scale = raw_e2m1_block_scale(blocks, self.eps)
+        return _exmy_scale_from_raw(
+            raw_scale,
+            exponent_bits=self.scale_exponent_bits,
+            mantissa_bits=self.scale_mantissa_bits,
+            exponent_bias=self.scale_exponent_bias,
+            eps=self.eps,
+        )
+
+
+@dataclass(frozen=True)
+class MXFP4E4M3ScaleSearchFormat:
+    """MXFP4 E4M3 fake quantization with online per-block scale-code search."""
+
+    name: str = "mxfp4_e4m3_search"
+    block_size: int = 32
+    scale_code_offsets: tuple[int, ...] = (-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8)
+    eps: float = 1e-12
+    scale_exponent_bits: int = 4
+    scale_mantissa_bits: int = 3
+    scale_exponent_bias: int = 7
+
+    def quantize(self, tensor: torch.Tensor) -> torch.Tensor:
+        return _quantize_mxfp4_float_scale_search(
+            tensor,
+            block_size=self.block_size,
+            scale_code_offsets=self.scale_code_offsets,
+            exponent_bits=self.scale_exponent_bits,
+            mantissa_bits=self.scale_mantissa_bits,
+            exponent_bias=self.scale_exponent_bias,
+            eps=self.eps,
+        )
+
+    def _block_scale(self, blocks: torch.Tensor) -> torch.Tensor:
+        raw_scale = raw_e2m1_block_scale(blocks, self.eps)
+        return _exmy_scale_from_raw(
+            raw_scale,
+            exponent_bits=self.scale_exponent_bits,
+            mantissa_bits=self.scale_mantissa_bits,
+            exponent_bias=self.scale_exponent_bias,
+            eps=self.eps,
+        )
+
+
+@dataclass(frozen=True)
+class MXFP4E5M3ScaleSearchFormat:
+    """MXFP4 E5M3 fake quantization with online per-block scale-code search."""
+
+    name: str = "mxfp4_e5m3_search"
+    block_size: int = 32
+    scale_code_offsets: tuple[int, ...] = (-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8)
+    eps: float = 1e-12
+    scale_exponent_bits: int = 5
+    scale_mantissa_bits: int = 3
+    scale_exponent_bias: int = 15
+
+    def quantize(self, tensor: torch.Tensor) -> torch.Tensor:
+        return _quantize_mxfp4_float_scale_search(
+            tensor,
+            block_size=self.block_size,
+            scale_code_offsets=self.scale_code_offsets,
+            exponent_bits=self.scale_exponent_bits,
+            mantissa_bits=self.scale_mantissa_bits,
+            exponent_bias=self.scale_exponent_bias,
+            eps=self.eps,
+        )
+
+    def _block_scale(self, blocks: torch.Tensor) -> torch.Tensor:
+        raw_scale = raw_e2m1_block_scale(blocks, self.eps)
+        return _exmy_scale_from_raw(
+            raw_scale,
+            exponent_bits=self.scale_exponent_bits,
+            mantissa_bits=self.scale_mantissa_bits,
+            exponent_bias=self.scale_exponent_bias,
+            eps=self.eps,
         )
 
 
@@ -195,6 +334,79 @@ class MXFP4ScaleSearchFormat:
             min_exponent=self.min_scale_exponent,
             max_exponent=self.max_scale_exponent,
         )
+
+
+def _exmy_scale_from_raw(
+    raw_scale: torch.Tensor,
+    *,
+    exponent_bits: int,
+    mantissa_bits: int,
+    exponent_bias: int,
+    eps: float,
+) -> torch.Tensor:
+    block_scale = quantize_unsigned_fp(
+        raw_scale.float(),
+        exponent_bits=exponent_bits,
+        mantissa_bits=mantissa_bits,
+        exponent_bias=exponent_bias,
+    )
+    return torch.clamp(block_scale, min=eps).to(raw_scale.dtype)
+
+
+def _quantize_mxfp4_float_scale_search(
+    tensor: torch.Tensor,
+    *,
+    block_size: int,
+    scale_code_offsets: tuple[int, ...],
+    exponent_bits: int,
+    mantissa_bits: int,
+    exponent_bias: int,
+    eps: float,
+) -> torch.Tensor:
+    blocks, metadata = to_blocks(tensor, block_size)
+    raw_scale = raw_e2m1_block_scale(blocks, eps)
+    base_block_scale = quantize_unsigned_fp(
+        raw_scale.float(),
+        exponent_bits=exponent_bits,
+        mantissa_bits=mantissa_bits,
+        exponent_bias=exponent_bias,
+    )
+    base_scale_code = unsigned_fp_code_from_value(
+        base_block_scale,
+        exponent_bits=exponent_bits,
+        mantissa_bits=mantissa_bits,
+        exponent_bias=exponent_bias,
+    )
+    max_code = (1 << (exponent_bits + mantissa_bits)) - 1
+    best_quantized: torch.Tensor | None = None
+    best_scores: torch.Tensor | None = None
+
+    for scale_code_offset in scale_code_offsets:
+        scale_code = torch.clamp(base_scale_code + scale_code_offset, min=0, max=max_code)
+        scale = torch.clamp(
+            unsigned_fp_value_from_code(
+                scale_code,
+                exponent_bits=exponent_bits,
+                mantissa_bits=mantissa_bits,
+                exponent_bias=exponent_bias,
+                dtype=raw_scale.dtype,
+            ),
+            min=eps,
+        )
+        quantized = quantize_e2m1(blocks / scale) * scale
+        scores = torch.sum((blocks - quantized).square(), dim=-1)
+        if best_scores is None or best_quantized is None:
+            best_scores = scores
+            best_quantized = quantized
+            continue
+
+        improved = scores < best_scores
+        best_scores = torch.where(improved, scores, best_scores)
+        best_quantized = torch.where(improved.unsqueeze(-1), quantized, best_quantized)
+
+    if best_quantized is None:
+        raise RuntimeError("No MXFP4 float-scale candidates were evaluated")
+    return from_blocks(best_quantized, metadata)
 
 
 def _e8m0_scale_from_raw(

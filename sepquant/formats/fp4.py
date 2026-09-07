@@ -3,6 +3,10 @@ from __future__ import annotations
 from sepquant.formats.base import FP4Format
 from sepquant.formats.hifp import HIF4Format, HIF4ScaleSearchFormat
 from sepquant.formats.mxfp import (
+    MXFP4E4M3Format,
+    MXFP4E4M3ScaleSearchFormat,
+    MXFP4E5M3Format,
+    MXFP4E5M3ScaleSearchFormat,
     MXFP4Format,
     MXFP4PlusFormat,
     MXFP4PlusScaleSearchFormat,
@@ -17,6 +21,26 @@ def get_fp4_format(name: str) -> FP4Format:
     normalized = name.lower()
     if normalized == "mxfp4":
         return MXFP4Format()
+    if normalized in {"mxfp4_e4m3", "mxfp4-e4m3", "mxfp4_ue4m3", "mxfp4-ue4m3"}:
+        return MXFP4E4M3Format()
+    if normalized in {
+        "mxfp4_e4m3_search",
+        "mxfp4-e4m3-search",
+        "mxfp4_e4m3_scale_search",
+        "mxfp4_ue4m3_search",
+        "mxfp4-ue4m3-search",
+    }:
+        return MXFP4E4M3ScaleSearchFormat()
+    if normalized in {"mxfp4_e5m3", "mxfp4-e5m3", "mxfp4_ue5m3", "mxfp4-ue5m3"}:
+        return MXFP4E5M3Format()
+    if normalized in {
+        "mxfp4_e5m3_search",
+        "mxfp4-e5m3-search",
+        "mxfp4_e5m3_scale_search",
+        "mxfp4_ue5m3_search",
+        "mxfp4-ue5m3-search",
+    }:
+        return MXFP4E5M3ScaleSearchFormat()
     if normalized in {"mxfp4+", "mxfp4_plus", "mxfp4-plus", "mxfp4plus"}:
         return MXFP4PlusFormat()
     if normalized in {
@@ -39,4 +63,3 @@ def get_fp4_format(name: str) -> FP4Format:
     if normalized in {"hif4_search", "hif4-scale-search", "hif4_scale_search"}:
         return HIF4ScaleSearchFormat()
     raise ValueError(f"Unsupported FP4 format: {name}")
-

@@ -97,6 +97,62 @@ def quantize_unsigned_fp(
     return torch.where(abs_tensor < min_normal, subnormal, normal)
 
 
+def unsigned_fp_code_from_value(
+    value: torch.Tensor,
+    *,
+    exponent_bits: int,
+    mantissa_bits: int,
+    exponent_bias: int,
+) -> torch.Tensor:
+    max_value = max_normal(
+        exponent_bits=exponent_bits,
+        mantissa_bits=mantissa_bits,
+        exponent_bias=exponent_bias,
+    )
+    max_code = (1 << (exponent_bits + mantissa_bits)) - 1
+    min_normal = 2.0 ** (1 - exponent_bias)
+    subnormal_step = 2.0 ** (1 - exponent_bias - mantissa_bits)
+
+    value = value.float().clamp(min=0.0, max=max_value)
+    subnormal_code = torch.round(value / subnormal_step)
+
+    safe_value = torch.clamp(value, min=min_normal)
+    exponent = torch.floor(torch.log2(safe_value)).clamp(
+        min=1 - exponent_bias,
+        max=((1 << exponent_bits) - 1) - exponent_bias,
+    )
+    exponent_field = exponent + exponent_bias
+    mantissa = torch.round((safe_value / torch.pow(2.0, exponent) - 1.0) * (1 << mantissa_bits))
+    mantissa = mantissa.clamp(min=0, max=(1 << mantissa_bits) - 1)
+    normal_code = exponent_field * (1 << mantissa_bits) + mantissa
+
+    code = torch.where(value < min_normal, subnormal_code, normal_code)
+    return code.round().long().clamp(min=0, max=max_code)
+
+
+def unsigned_fp_value_from_code(
+    code: torch.Tensor,
+    *,
+    exponent_bits: int,
+    mantissa_bits: int,
+    exponent_bias: int,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    max_code = (1 << (exponent_bits + mantissa_bits)) - 1
+    subnormal_step = 2.0 ** (1 - exponent_bias - mantissa_bits)
+
+    code = code.long().clamp(min=0, max=max_code)
+    exponent_field = torch.div(code, 1 << mantissa_bits, rounding_mode="floor")
+    mantissa = code.remainder(1 << mantissa_bits).float()
+
+    subnormal = mantissa * subnormal_step
+    normal = (1.0 + mantissa / (1 << mantissa_bits)) * torch.pow(
+        2.0,
+        exponent_field.float() - exponent_bias,
+    )
+    return torch.where(exponent_field == 0, subnormal, normal).to(dtype)
+
+
 def max_normal(*, exponent_bits: int, mantissa_bits: int, exponent_bias: int) -> float:
     max_exp_field = (1 << exponent_bits) - 1
     max_exp = max_exp_field - exponent_bias
