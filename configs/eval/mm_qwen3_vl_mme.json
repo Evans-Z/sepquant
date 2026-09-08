@@ -1,0 +1,10 @@
+{
+  "model": "outputs/quant/qwen3_vl_gptq_mxfp4",
+  "tasks": ["mme"],
+  "batch_size": "1",
+  "limit": 8,
+  "device": "cuda:0",
+  "model_args": {},
+  "output_path": "outputs/eval/qwen3_vl_gptq_mxfp4_mme",
+  "log_samples": true
+}

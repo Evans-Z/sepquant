@@ -1,0 +1,15 @@
+{
+  "model": "Qwen/Qwen3-VL-4B-Instruct",
+  "model_type": "qwen3_vl",
+  "components": ["language"],
+  "method": "gptq",
+  "calibration_dir": "outputs/calib/qwen3_vl_coco",
+  "weight_format": "mxfp4",
+  "activation_format": "none",
+  "gptq_damp_percent": 0.01,
+  "include_lm_head": false,
+  "device": "auto",
+  "dtype": "auto",
+  "output_plan_path": "outputs/plans/qwen3_vl_gptq_mxfp4.json",
+  "save_quantized_checkpoint": "outputs/quant/qwen3_vl_gptq_mxfp4"
+}

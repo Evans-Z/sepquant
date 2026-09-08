@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+import transformers
+from transformers import AutoModelForCausalLM, AutoProcessor, AutoTokenizer
 
 from sepquant.models import patch_causal_lm_linears
 from sepquant.models.load import parse_dtype, resolve_device
@@ -49,7 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model-type",
         default="auto",
-        choices=["auto", "qwen", "qwen2", "qwen3", "qwen3_moe", "llama", "mistral", "gemma", "opt", "generic"],
+        choices=["auto", "qwen", "qwen2", "qwen3", "qwen3_moe", "qwen3_vl", "llama", "mistral", "gemma", "opt", "generic"],
     )
     parser.add_argument("--method", default="weight_format_search")
     parser.add_argument("--calibration-dir", type=Path, default=None)
@@ -117,6 +118,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hif4-level1-code-offsets", nargs="+", type=int, default=[-2, -1, 0, 1, 2])
     parser.add_argument("--rotation", default="none", choices=["none", "block_hadamard"])
     parser.add_argument("--include-lm-head", action="store_true")
+    parser.add_argument(
+        "--components",
+        nargs="+",
+        choices=["language", "vision_merger", "vision_encoder", "lm_head"],
+        default=["language"],
+        help="Qwen3-VL components to optimize; ignored for language-only models.",
+    )
     parser.add_argument("--device", default="auto")
     parser.add_argument("--dtype", default="auto", choices=["auto", "float16", "bfloat16", "float32"])
     parser.add_argument("--output-plan-path", type=Path, default=None)
@@ -138,6 +146,8 @@ def parse_args() -> argparse.Namespace:
         args.save_quantized_checkpoint = Path(args.save_quantized_checkpoint)
     if isinstance(args.candidates, str):
         args.candidates = [item.strip() for item in args.candidates.split(",") if item.strip()]
+    if isinstance(args.components, str):
+        args.components = [item.strip() for item in args.components.split(",") if item.strip()]
     if isinstance(args.mxfp4_scale_offsets, str):
         args.mxfp4_scale_offsets = [
             int(item.strip()) for item in args.mxfp4_scale_offsets.split(",") if item.strip()
@@ -167,13 +177,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model,
-        torch_dtype=parse_dtype(args.dtype),
-        device_map=args.device if args.device == "auto" else None,
-        trust_remote_code=True,
-    )
+    model, tokenizer = _load_optimization_model(args)
     if args.device != "auto":
         model.to(resolve_device(args.device))
     model.eval()
@@ -182,6 +186,7 @@ def main() -> None:
         model,
         model_type=args.model_type,
         include_lm_head=args.include_lm_head,
+        components=args.components if args.model_type == "qwen3_vl" else None,
     )
     print(f"Found {len(targets)} target linear layers (model_type={resolved_model_type}).")
 
@@ -216,6 +221,7 @@ def main() -> None:
             "method": args.method,
             "model": args.model,
             "model_type": resolved_model_type,
+            "components": args.components if resolved_model_type == "qwen3_vl" else None,
             "calibration_dir": str(args.calibration_dir),
             "candidates": args.candidates,
             "weight_format": args.weight_format,
@@ -249,7 +255,40 @@ def main() -> None:
             results=results,
             checkpoint_dir=args.save_quantized_checkpoint,
             include_lm_head=args.include_lm_head,
+            components=args.components if resolved_model_type == "qwen3_vl" else None,
         )
+
+
+def _load_optimization_model(args: argparse.Namespace):
+    if args.model_type != "qwen3_vl":
+        tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model,
+            torch_dtype=parse_dtype(args.dtype),
+            device_map=args.device if args.device == "auto" else None,
+            trust_remote_code=True,
+        )
+        return model, tokenizer
+
+    model_cls = getattr(transformers, "Qwen3VLForConditionalGeneration", None)
+    if model_cls is None:
+        raise RuntimeError(
+            "Qwen3-VL requires a Transformers release that provides "
+            "Qwen3VLForConditionalGeneration"
+        )
+    processor = AutoProcessor.from_pretrained(args.model, trust_remote_code=True)
+    model = model_cls.from_pretrained(
+        args.model,
+        torch_dtype=parse_dtype(args.dtype),
+        device_map=args.device if args.device == "auto" else None,
+        trust_remote_code=True,
+    )
+    loaded_model_type = getattr(getattr(model, "config", None), "model_type", None)
+    if loaded_model_type == "qwen3_vl_moe":
+        raise ValueError("Qwen3-VL MoE is not supported yet; use a dense checkpoint")
+    if loaded_model_type != "qwen3_vl":
+        raise ValueError(f"Expected a dense Qwen3-VL checkpoint, got {loaded_model_type!r}")
+    return model, processor
 
 
 def _save_sepquant_checkpoint(
@@ -261,6 +300,7 @@ def _save_sepquant_checkpoint(
     results,
     checkpoint_dir: Path,
     include_lm_head: bool,
+    components=None,
 ) -> None:
     quantization_plan = QuantizationPlan.from_dict(plan)
     patch_report = patch_causal_lm_linears(
@@ -271,6 +311,7 @@ def _save_sepquant_checkpoint(
         include_lm_head=include_lm_head,
         quantization_plan=quantization_plan,
         rotation=plan.get("metadata", {}).get("rotation", "none"),
+        components=components,
     )
     optimized_weights = {
         result.layer_name: result.optimized_weight
@@ -286,6 +327,7 @@ def _save_sepquant_checkpoint(
         model,
         model_type=model_type,
         include_lm_head=include_lm_head,
+        components=components,
     )
     for target in targets:
         if target.source != "qwen3_moe_expert" or target.name not in optimized_weights:
@@ -341,4 +383,3 @@ def _load_config(path: Path) -> dict[str, Any]:
 
 if __name__ == "__main__":
     main()
-

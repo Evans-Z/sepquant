@@ -3,8 +3,15 @@ from __future__ import annotations
 import random
 
 import torch
-from datasets import load_dataset
 from transformers import PreTrainedTokenizerBase
+
+try:
+    from datasets import load_dataset
+except ModuleNotFoundError:
+    def load_dataset(*args, **kwargs):
+        from datasets import load_dataset as _load_dataset
+
+        return _load_dataset(*args, **kwargs)
 
 
 def build_calibration_batches(
@@ -51,4 +58,3 @@ def build_calibration_batches(
         torch.cat(samples[begin : begin + batch_size], dim=0)
         for begin in range(0, len(samples), batch_size)
     ]
-

@@ -268,6 +268,51 @@ scripts/quantize_generate.py \
   --weight-format mxfp4
 ```
 
+## Dense Qwen3-VL (Image-Text)
+
+SepQuant supports weight fake quantization for dense Qwen3-VL image-text models. The language
+decoder, vision encoder, and the main/DeepStack vision mergers are independently selectable.
+Qwen3-VL MoE and video calibration are intentionally rejected for now.
+
+Install the optional multimodal evaluation dependencies:
+
+```bash
+pip install -e ".[multimodal]"
+```
+
+Collect image-text calibration statistics. The default config starts with the language decoder so
+the existing Qwen3 quantization path can be validated before enabling vision components:
+
+```bash
+scripts/run_collect_calib_mm.sh configs/calib/qwen3_vl_coco.json
+```
+
+Optimize the selected layers and save a standard Transformers checkpoint containing the
+dequantized FP4 weights:
+
+```bash
+scripts/run_optimize_layers.sh configs/optimize/qwen3_vl_gptq_mxfp4.json
+```
+
+Run a small MME smoke evaluation through `lmms-eval`:
+
+```bash
+scripts/run_eval_mm.sh configs/eval/mm_qwen3_vl_mme.json
+```
+
+Use `components` to expand the quantization scope in stages:
+
+```json
+{
+  "model_type": "qwen3_vl",
+  "components": ["language", "vision_merger", "vision_encoder"]
+}
+```
+
+The saved checkpoint can be loaded directly by the upstream `qwen3_vl` lmms-eval adapter. Runtime
+activation fake quantization is available through `load_quantized_qwen3_vl`, while the external
+lmms-eval checkpoint path evaluates saved weight quantization only.
+
 ## Model Patching
 
 SepQuant replaces supported `nn.Linear` modules with `QuantLinear`.
@@ -700,4 +745,3 @@ sepquant-report-experiments outputs/experiments \
 - `activation_format` can be set to `none`, `mxfp4`, `mxfp4_search`, `nvfp4`, `nvfp4_search`, `hif4`, or `hif4_search`.
 - Downstream task results are saved to `output_path` when provided.
 - Use small `limit` values for task smoke tests before running full evaluations.
-

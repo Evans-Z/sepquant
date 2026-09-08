@@ -18,8 +18,10 @@ dependencies = [
 
 [project.scripts]
 sepquant-collect-calib = "sepquant.calibration.collect:main"
+sepquant-collect-calib-mm = "sepquant.calibration.collect_multimodal:main"
 sepquant-eval-ppl = "sepquant.evaluation.ppl:main"
 sepquant-eval-tasks = "sepquant.evaluation.tasks:main"
+sepquant-eval-mm = "sepquant.evaluation.multimodal:main"
 sepquant-format-benchmark = "sepquant.formats.benchmark:main"
 sepquant-optimize-layers = "sepquant.optimization.cli:main"
 sepquant-report-experiments = "sepquant.experiments.report:main"
@@ -32,7 +34,11 @@ dev = [
 eval = [
     "lm-eval",
 ]
+multimodal = [
+    "lmms-eval",
+    "pillow",
+    "transformers>=4.57.0",
+]
 
 [tool.setuptools.packages.find]
 include = ["sepquant*"]
-

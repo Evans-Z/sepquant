@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import fnmatch
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 import torch
 from torch import nn
@@ -45,10 +46,11 @@ def collect_linear_calibration(
     *,
     model: nn.Module,
     targets: list[TargetLinear],
-    batches: list[torch.Tensor],
+    batches: list[torch.Tensor | Mapping[str, Any]],
     max_tokens_per_layer: int,
     capture_mode: CaptureMode = "gram",
     input_layer_patterns: list[str] | None = None,
+    forward_batch: Callable[[nn.Module, torch.Tensor | Mapping[str, Any]], Any] | None = None,
 ) -> CalibrationCapture:
     """Collect calibration statistics for target linear layers.
 
@@ -112,7 +114,10 @@ def collect_linear_calibration(
     try:
         with torch.inference_mode():
             for batch in tqdm(batches, desc="Collecting calibration activations", unit="batch"):
-                model(batch.to(model.device))
+                if forward_batch is not None:
+                    forward_batch(model, batch)
+                else:
+                    _forward_calibration_batch(model, batch)
     finally:
         for hook in hooks:
             hook.remove()
@@ -123,6 +128,43 @@ def collect_linear_calibration(
         if chunks
     }
     return CalibrationCapture(inputs=inputs, grams=grams, token_counts=gram_counts)
+
+
+def _forward_calibration_batch(
+    model: nn.Module,
+    batch: torch.Tensor | Mapping[str, Any],
+) -> Any:
+    device = _model_input_device(model)
+    if isinstance(batch, torch.Tensor):
+        return model(batch.to(device))
+    if isinstance(batch, Mapping):
+        return model(**_move_to_device(batch, device))
+    raise TypeError(f"Unsupported calibration batch type: {type(batch).__name__}")
+
+
+def _model_input_device(model: nn.Module) -> torch.device:
+    get_input_embeddings = getattr(model, "get_input_embeddings", None)
+    if callable(get_input_embeddings):
+        embeddings = get_input_embeddings()
+        weight = getattr(embeddings, "weight", None)
+        if isinstance(weight, torch.Tensor) and weight.device.type != "meta":
+            return weight.device
+    try:
+        return next(model.parameters()).device
+    except StopIteration:
+        return torch.device("cpu")
+
+
+def _move_to_device(value: Any, device: torch.device) -> Any:
+    if isinstance(value, torch.Tensor):
+        return value.to(device)
+    if isinstance(value, Mapping):
+        return {key: _move_to_device(item, device) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return tuple(_move_to_device(item, device) for item in value)
+    if isinstance(value, list):
+        return [_move_to_device(item, device) for item in value]
+    return value
 
 
 def _make_capture_hook(
@@ -261,4 +303,3 @@ def _matches_any(layer_name: str, patterns: list[str] | None) -> bool:
     if not patterns:
         return True
     return any(fnmatch.fnmatch(layer_name, pattern) for pattern in patterns)
-

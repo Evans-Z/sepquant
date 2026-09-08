@@ -11,9 +11,15 @@ from sepquant.calibration.artifacts import (
 )
 from sepquant.calibration.capture import CalibrationCapture, collect_linear_calibration, collect_linear_inputs
 from sepquant.calibration.data import build_calibration_batches
+from sepquant.calibration.multimodal_data import (
+    build_multimodal_calibration_batches,
+    build_qwen3_vl_calibration_batch,
+)
 
 __all__ = [
     "build_calibration_batches",
+    "build_multimodal_calibration_batches",
+    "build_qwen3_vl_calibration_batch",
     "CalibrationCapture",
     "collect_linear_calibration",
     "collect_linear_inputs",
@@ -25,4 +31,3 @@ __all__ = [
     "load_layer_input",
     "save_calibration_artifact",
 ]
-

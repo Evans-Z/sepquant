@@ -18,12 +18,16 @@ ModelType = Literal[
     "qwen2",
     "qwen3",
     "qwen3_moe",
+    "qwen3_vl",
+    "qwen3_vl_moe",
     "llama",
     "mistral",
     "gemma",
     "opt",
     "generic",
 ]
+
+ModelComponent = Literal["language", "vision_encoder", "vision_merger", "lm_head", "other"]
 
 
 @dataclass(frozen=True)
@@ -41,6 +45,7 @@ class TargetLinear:
     owner_name: str | None = None
     expert_idx: int | None = None
     projection: Literal["gate_up_proj", "down_proj"] | None = None
+    component: ModelComponent = "language"
 
 
 class Qwen3MoeExpertLinearView(nn.Module):
@@ -103,6 +108,8 @@ SUPPORTED_SUFFIX_MODEL_TYPES = {
     "qwen2",
     "qwen3",
     "qwen3_moe",
+    "qwen3_vl",
+    "qwen3_vl_moe",
     "llama",
     "mistral",
     "gemma",
@@ -121,13 +128,19 @@ def patch_causal_lm_linears(
     prequantized_weight: bool = False,
     rotation: str = "none",
     override_plan_activation_format: bool = False,
+    components: tuple[ModelComponent, ...] | list[ModelComponent] | None = None,
 ) -> PatchReport:
-    """Replace supported causal LM linear projections with `QuantLinear`."""
+    """Replace supported model projections with ``QuantLinear``.
+
+    The historical name remains for backward compatibility. Multimodal callers
+    may restrict patching to selected model components.
+    """
 
     resolved_model_type, targets = get_target_linears(
         model,
         model_type=model_type,
         include_lm_head=include_lm_head,
+        components=components,
     )
     skipped: list[str] = []
 
@@ -224,8 +237,12 @@ def get_target_linears(
     *,
     model_type: ModelType = "auto",
     include_lm_head: bool,
+    components: tuple[ModelComponent, ...] | list[ModelComponent] | None = None,
 ) -> tuple[str, list[TargetLinear]]:
     resolved_model_type = _resolve_model_type(model, model_type)
+    if resolved_model_type == "qwen3_vl_moe":
+        raise ValueError("Qwen3-VL MoE is not supported yet; use a dense Qwen3-VL checkpoint")
+    selected_components = set(components) if components is not None else None
     targets: list[TargetLinear] = []
     for name, module in model.named_modules():
         if resolved_model_type == "qwen3_moe" and _is_qwen3_moe_experts(module):
@@ -238,6 +255,15 @@ def get_target_linears(
         if name == "lm_head" and not include_lm_head:
             continue
 
+        if resolved_model_type == "qwen3_vl":
+            component = _qwen3_vl_component(name)
+            if component is None:
+                continue
+            if selected_components is not None and component not in selected_components:
+                continue
+            targets.append(TargetLinear(name=name, module=module, component=component))
+            continue
+
         if resolved_model_type == "generic":
             targets.append(TargetLinear(name=name, module=module))
         elif resolved_model_type == "opt":
@@ -247,6 +273,24 @@ def get_target_linears(
             targets.append(TargetLinear(name=name, module=module))
 
     return resolved_model_type, targets
+
+
+def _qwen3_vl_component(layer_name: str) -> ModelComponent | None:
+    """Classify deployment-relevant Linear layers in dense Qwen3-VL."""
+
+    if layer_name == "lm_head":
+        return "lm_head"
+    if layer_name.startswith("model.language_model.") and layer_name.endswith(
+        TRANSFORMER_LINEAR_SUFFIXES
+    ):
+        return "language"
+    if layer_name.startswith("model.visual.deepstack_merger_list."):
+        return "vision_merger"
+    if layer_name.startswith("model.visual.merger."):
+        return "vision_merger"
+    if layer_name.startswith("model.visual.blocks."):
+        return "vision_encoder"
+    return None
 
 
 def _is_qwen3_moe_experts(module: nn.Module) -> bool:
@@ -401,4 +445,3 @@ def _format_from_spec(
     if format_name == "none":
         return None
     return get_fp4_format(format_name)
-
