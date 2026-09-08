@@ -83,6 +83,11 @@ def build_lmms_model_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     }
     if args.device is not None:
         kwargs["device"] = args.device
+        # lmms-eval's Qwen3-VL adapter uses ``device`` for input placement but
+        # independently defaults ``device_map`` to ``auto`` when loading the
+        # model.  Keep a single-device request on that device unless callers
+        # explicitly opt into sharding through model_args.device_map.
+        kwargs.setdefault("device_map", args.device)
     return kwargs
 
 

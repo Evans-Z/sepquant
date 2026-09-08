@@ -27,8 +27,24 @@ def test_lmms_model_kwargs_target_qwen3_vl_checkpoint() -> None:
         "pretrained": "outputs/checkpoints/qwen3-vl-mxfp4",
         "batch_size": "1",
         "device": "cuda:0",
+        "device_map": "cuda:0",
         "max_pixels": 1024,
     }
+
+
+def test_lmms_model_kwargs_preserve_explicit_device_map() -> None:
+    args = argparse.Namespace(
+        model="Qwen/Qwen3-VL-4B-Instruct",
+        pre_quant_model=None,
+        batch_size="1",
+        device="cuda:0",
+        model_args={"device_map": "auto"},
+    )
+
+    model_kwargs = build_lmms_model_kwargs(args)
+
+    assert model_kwargs["device"] == "cuda:0"
+    assert model_kwargs["device_map"] == "auto"
 
 
 def test_in_process_eval_keeps_activation_quantization_installed() -> None:
