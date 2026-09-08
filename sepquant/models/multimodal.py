@@ -63,36 +63,69 @@ def load_quantized_qwen3_vl(
     model.eval()
 
     plan = _resolve_plan(quantization_plan=quantization_plan, pre_quant_model=pre_quant_model)
-    patch_report = None
-    should_patch = (
-        (pre_quant_model is None and (weight_format != "none" or plan is not None))
-        or (
-            pre_quant_model is not None
-            and (plan is not None or activation_format != "none" or rotation != "none")
-        )
+    patch_report = patch_loaded_qwen3_vl(
+        model,
+        weight_format=weight_format,
+        activation_format=activation_format,
+        components=components,
+        include_lm_head=include_lm_head,
+        quantization_plan=plan,
+        prequantized_weight=pre_quant_model is not None,
+        rotation=rotation,
     )
-    if should_patch:
-        if pre_quant_model is not None and weight_format == "none" and plan is None:
-            raise ValueError(
-                "weight_format must describe pre_quant_model weights when activation "
-                "quantization or rotation is enabled"
-            )
-        patch_report = patch_causal_lm_linears(
-            model,
-            weight_format=None if weight_format == "none" else get_fp4_format(weight_format),
-            activation_format=(
-                None if activation_format == "none" else get_fp4_format(activation_format)
-            ),
-            model_type="qwen3_vl",
-            include_lm_head=include_lm_head,
-            quantization_plan=plan,
-            prequantized_weight=pre_quant_model is not None,
-            rotation=rotation,
-            override_plan_activation_format=activation_format != "none",
-            components=components,
-        )
 
     return LoadedMultimodalModel(model=model, processor=processor, patch_report=patch_report)
+
+
+def patch_loaded_qwen3_vl(
+    model: PreTrainedModel,
+    *,
+    weight_format: str,
+    activation_format: str,
+    components: tuple[ModelComponent, ...] | list[ModelComponent] = DEFAULT_QWEN3_VL_COMPONENTS,
+    include_lm_head: bool = False,
+    quantization_plan: str | Path | QuantizationPlan | None = None,
+    prequantized_weight: bool = False,
+    rotation: str = "none",
+) -> PatchReport | None:
+    """Install SepQuant W/A modules into an already loaded dense Qwen3-VL model."""
+
+    _ensure_dense_qwen3_vl(model)
+    if isinstance(quantization_plan, QuantizationPlan):
+        plan = quantization_plan
+    elif quantization_plan is not None:
+        plan = QuantizationPlan.from_file(quantization_plan)
+    else:
+        plan = None
+
+    should_patch = (
+        weight_format != "none"
+        or activation_format != "none"
+        or plan is not None
+        or rotation != "none"
+    )
+    if not should_patch:
+        return None
+    if weight_format == "none" and plan is None:
+        raise ValueError(
+            "weight_format or quantization_plan is required when activation quantization "
+            "or rotation is enabled"
+        )
+
+    return patch_causal_lm_linears(
+        model,
+        weight_format=None if weight_format == "none" else get_fp4_format(weight_format),
+        activation_format=(
+            None if activation_format == "none" else get_fp4_format(activation_format)
+        ),
+        model_type="qwen3_vl",
+        include_lm_head=include_lm_head,
+        quantization_plan=plan,
+        prequantized_weight=prequantized_weight,
+        rotation=rotation,
+        override_plan_activation_format=activation_format != "none",
+        components=components,
+    )
 
 
 def _ensure_dense_qwen3_vl(model: PreTrainedModel) -> None:

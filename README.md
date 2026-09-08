@@ -270,7 +270,7 @@ scripts/quantize_generate.py \
 
 ## Dense Qwen3-VL (Image-Text)
 
-SepQuant supports weight fake quantization for dense Qwen3-VL image-text models. The language
+SepQuant supports weight-activation fake quantization for dense Qwen3-VL image-text models. The language
 decoder, vision encoder, and the main/DeepStack vision mergers are independently selectable.
 Qwen3-VL MoE and video calibration are intentionally rejected for now.
 
@@ -309,9 +309,9 @@ Use `components` to expand the quantization scope in stages:
 }
 ```
 
-The saved checkpoint can be loaded directly by the upstream `qwen3_vl` lmms-eval adapter. Runtime
-activation fake quantization is available through `load_quantized_qwen3_vl`, while the external
-lmms-eval checkpoint path evaluates saved weight quantization only.
+`sepquant-eval-mm` constructs the upstream Qwen3-VL lmms-eval adapter in-process, then replaces the
+selected layers with `QuantLinear`. Saved weight quantization is restored from `pre_quant_model`,
+and `activation_format` is applied online during every evaluated forward/generation call.
 
 ## Model Patching
 

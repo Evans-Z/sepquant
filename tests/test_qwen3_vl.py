@@ -4,7 +4,12 @@ from torch import nn
 
 from sepquant.calibration import build_qwen3_vl_calibration_batch, collect_linear_calibration
 from sepquant.formats import get_fp4_format
-from sepquant.models import QuantLinear, get_target_linears, patch_causal_lm_linears
+from sepquant.models import (
+    QuantLinear,
+    get_target_linears,
+    patch_causal_lm_linears,
+    patch_loaded_qwen3_vl,
+)
 
 
 class Namespace(nn.Module):
@@ -103,6 +108,26 @@ def test_qwen3_vl_can_patch_language_without_touching_vision() -> None:
     assert isinstance(model.model.language_model.layers[0].self_attn.q_proj, QuantLinear)
     assert isinstance(model.model.visual.blocks[0].attn.qkv, nn.Linear)
     assert isinstance(model.model.visual.merger.linear_fc1, nn.Linear)
+
+
+def test_loaded_qwen3_vl_installs_weight_activation_quantization() -> None:
+    model = TinyQwen3VL()
+    original_weight = model.model.language_model.layers[0].self_attn.q_proj.weight.detach().clone()
+
+    report = patch_loaded_qwen3_vl(
+        model,
+        weight_format="mxfp4",
+        activation_format="nvfp4",
+        components=["language"],
+        prequantized_weight=True,
+    )
+
+    q_proj = model.model.language_model.layers[0].self_attn.q_proj
+    assert report is not None and report.replaced == 5
+    assert isinstance(q_proj, QuantLinear)
+    assert q_proj.activation_format is not None
+    assert q_proj.activation_format.name == "nvfp4"
+    assert torch.equal(q_proj.weight, original_weight)
 
 
 def test_multimodal_mapping_batch_collects_all_selected_components() -> None:

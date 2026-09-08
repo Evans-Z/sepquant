@@ -1,10 +1,21 @@
 {
-  "model": "outputs/quant/qwen3_vl_gptq_mxfp4",
+  "model": "Qwen/Qwen3-VL-4B-Instruct",
+  "model_type": "qwen3_vl",
   "tasks": ["mme"],
+  "num_fewshot": 0,
   "batch_size": "1",
   "limit": 8,
+  "weight_format": "mxfp4",
+  "activation_format": "mxfp4_search",
+  "quantization_plan": "outputs/plans/qwen3_vl_gptq_mxfp4.json",
+  "pre_quant_model": "outputs/quant/qwen3_vl_gptq_mxfp4",
+  "components": ["language"],
+  "rotation": "none",
+  "include_lm_head": false,
   "device": "cuda:0",
+  "dtype": "auto",
   "model_args": {},
-  "output_path": "outputs/eval/qwen3_vl_gptq_mxfp4_mme",
+  "output_path": "outputs/eval/qwen3_vl_gptq_mxfp4_a_mxfp4_search_mme.json",
+  "experiment_dir": "outputs/experiments",
   "log_samples": true
 }

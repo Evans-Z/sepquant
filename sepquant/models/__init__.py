@@ -2,7 +2,11 @@
 
 from sepquant.models.hadamard import block_hadamard_last_dim, rotate_gram_block_hadamard
 from sepquant.models.load import LoadedCausalLM, load_quantized_causal_lm
-from sepquant.models.multimodal import LoadedMultimodalModel, load_quantized_qwen3_vl
+from sepquant.models.multimodal import (
+    LoadedMultimodalModel,
+    load_quantized_qwen3_vl,
+    patch_loaded_qwen3_vl,
+)
 from sepquant.models.patch import (
     ModelComponent,
     PatchReport,
@@ -23,6 +27,7 @@ __all__ = [
     "get_target_linears",
     "load_quantized_causal_lm",
     "load_quantized_qwen3_vl",
+    "patch_loaded_qwen3_vl",
     "patch_causal_lm_linears",
     "rotate_gram_block_hadamard",
 ]

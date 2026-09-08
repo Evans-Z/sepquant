@@ -37,6 +37,7 @@ eval = [
 multimodal = [
     "lmms-eval",
     "pillow",
+    "qwen-vl-utils>=0.0.14",
     "transformers>=4.57.0",
 ]
 
